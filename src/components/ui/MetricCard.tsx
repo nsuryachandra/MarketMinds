@@ -1,0 +1,88 @@
+import type { ReactNode } from 'react'
+import type { LucideIcon } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight } from 'lucide-react'
+import { GlassPanel } from './GlassPanel'
+import { Sparkline } from './Sparkline'
+import { cn } from '../../lib/utils'
+
+type Tone = 'brand' | 'sea' | 'jade' | 'gold' | 'coral'
+
+const tileTone: Record<Tone, string> = {
+  brand: 'text-brand-700 bg-brand-50',
+  sea: 'text-sea-700 bg-sea-50',
+  jade: 'text-jade-700 bg-jade-50',
+  gold: 'text-gold-700 bg-gold-50',
+  coral: 'text-coral-700 bg-coral-50',
+}
+
+interface MetricCardProps {
+  label: string
+  value: string
+  icon: LucideIcon
+  tone?: Tone
+  delta?: number
+  deltaLabel?: string
+  deltaGood?: boolean
+  spark?: number[]
+  footnote?: ReactNode
+  className?: string
+}
+
+export function MetricCard({
+  label,
+  value,
+  icon: Icon,
+  tone = 'brand',
+  delta,
+  deltaLabel = 'vs last month',
+  deltaGood = true,
+  spark,
+  footnote,
+  className,
+}: MetricCardProps) {
+  const positive = (delta ?? 0) >= 0
+  const good = positive === deltaGood
+  return (
+    <GlassPanel interactive className={cn('p-4.5 overflow-hidden p-5', className)}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="label truncate">{label}</p>
+          <p className="tabular mt-1.5 font-display text-[26px] font-extrabold leading-none tracking-[-0.04em] text-ink">
+            {value}
+          </p>
+        </div>
+        <div
+          className={cn(
+            'flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] border border-white/80',
+            tileTone[tone],
+          )}
+          style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 6px 12px -10px rgba(27,31,47,0.4)' }}
+        >
+          <Icon className="h-4 w-4" strokeWidth={2.1} />
+        </div>
+      </div>
+
+      <div className="mt-3.5 flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          {typeof delta === 'number' ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span
+                className={cn(
+                  'inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10.5px] font-bold',
+                  good ? 'bg-jade-50 text-jade-700' : 'bg-coral-50 text-coral-700',
+                )}
+              >
+                {positive ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                {Math.abs(delta).toFixed(1)}%
+              </span>
+              <span className="text-[10.5px] font-medium text-ink-faint">{deltaLabel}</span>
+            </div>
+          ) : (
+            <div className="text-[11px] font-medium text-ink-faint">{footnote}</div>
+          )}
+        </div>
+        {spark && <Sparkline data={spark} tone={tone} className="h-8 w-[86px] shrink-0" />}
+      </div>
+    </GlassPanel>
+  )
+}
