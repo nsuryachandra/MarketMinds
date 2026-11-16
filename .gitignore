@@ -11,6 +11,16 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.local
+.env.*.local
+
+# Python backend
+__pycache__/
+*.py[cod]
+backend/.venv/
+backend/marketminds.db
+datasets/processed/
 
 # Editor directories and files
 .vscode/*
