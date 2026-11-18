@@ -90,10 +90,41 @@ export const marketApi = {
   getDataSources(options = {}) {
     return request('/meta/data-sources', options)
   },
+  interpretSearch({ query, locality_id } = {}, options = {}) {
+    return request('/search/interpret', {
+      ...options,
+      method: 'POST',
+      body: { query, locality_id },
+    })
+  },
   getOverview({ category, radius_m } = {}, options = {}) {
     return request('/market/overview', {
       ...options,
       params: { category, radius_m },
+    })
+  },
+  getLocalityAnalysis({ locality, category, radius_m } = {}, options = {}) {
+    return request('/market/locality', {
+      ...options,
+      params: { locality, category, radius_m },
+    })
+  },
+  getAllLocalityAnalysis({ category, radius_m } = {}, options = {}) {
+    return request('/market/localities', {
+      ...options,
+      params: { category, radius_m },
+    })
+  },
+  getBusinessContext({ osm_id, category, radius_m } = {}, options = {}) {
+    return request('/market/business', {
+      ...options,
+      params: { osm_id, category, radius_m },
+    })
+  },
+  getBusinessCompetitors({ osm_id, category, radius_m, limit } = {}, options = {}) {
+    return request('/market/business/competitors', {
+      ...options,
+      params: { osm_id, category, radius_m, limit },
     })
   },
   getCompetitors({ locality, category, radius_m, limit } = {}, options = {}) {
@@ -125,8 +156,22 @@ export const marketApi = {
       body: payload,
     })
   },
+  estimateBusinessRisk(payload, options = {}) {
+    return request('/market/business/risk', {
+      ...options,
+      method: 'POST',
+      body: payload,
+    })
+  },
   estimateFinancials(payload, options = {}) {
     return request('/financial/estimate', {
+      ...options,
+      method: 'POST',
+      body: payload,
+    })
+  },
+  chatAssistant(payload, options = {}) {
+    return request('/assistant/chat', {
       ...options,
       method: 'POST',
       body: payload,

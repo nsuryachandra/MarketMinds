@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -18,7 +19,8 @@ BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from analysis import competitors, financial, location, market, risk, trends
+from analysis import competitors, financial, location, market, risk, search, trends
+from assistant import AssistantError, chat as assistant_chat, get_configuration
 from data.data_cleaning import (
     CATEGORY_BY_ID,
     DEFAULT_RADIUS_M,
@@ -53,6 +55,31 @@ class FinancialEstimateRequest(BaseModel):
     daily_customers: float | None = Field(default=None, gt=0)
     average_selling_price: float | None = Field(default=None, gt=0)
     working_days: int = Field(default=26, ge=1, le=31)
+
+
+class SearchInterpretRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=240)
+    locality_id: str | None = Field(default=None, min_length=1)
+
+
+class BusinessRiskRequest(BaseModel):
+    osm_id: str = Field(..., min_length=1)
+    category: str | None = None
+    radius_m: int = DEFAULT_RADIUS_M
+    monthly_rent: float | None = Field(default=None, ge=0)
+    staff_expenses: float | None = Field(default=None, ge=0)
+    other_monthly_expenses: float | None = Field(default=None, ge=0)
+    expected_monthly_revenue: float | None = Field(default=None, gt=0)
+
+
+class AssistantMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=12_000)
+
+
+class AssistantChatRequest(BaseModel):
+    messages: list[AssistantMessage] = Field(..., min_length=1, max_length=20)
+    context: dict[str, Any] = Field(default_factory=dict)
 
 
 @asynccontextmanager
@@ -111,6 +138,17 @@ async def http_exception_handler(request: Request, exception: HTTPException) -> 
     )
 
 
+@app.exception_handler(AssistantError)
+async def assistant_exception_handler(
+    request: Request,
+    exception: AssistantError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=exception.status_code,
+        content=_error_payload(exception.code, exception.message),
+    )
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(
     request: Request,
@@ -140,7 +178,11 @@ async def unhandled_exception_handler(request: Request, exception: Exception) ->
 def _client_error(error: ValueError) -> HTTPException:
     message = str(error)
     status_code = 422
-    if message.startswith("Unknown locality") or message.startswith("Unknown GHMC circle"):
+    if (
+        message.startswith("Unknown locality")
+        or message.startswith("Unknown GHMC circle")
+        or message.startswith("Unknown business")
+    ):
         status_code = 404
     return HTTPException(status_code=status_code, detail=message)
 
@@ -184,6 +226,7 @@ def health(request: Request, connection: Any = Depends(get_db)) -> dict[str, Any
             "failed_source_ids": [source["source_id"] for source in failed_sources],
         },
         "startup_import_results": getattr(request.app.state, "import_results", []),
+        "assistant": get_configuration(),
         "notes": [
             "Business counts are mapped OpenStreetMap POIs, not a verified register.",
             "The API does not silently substitute mock data.",
@@ -234,6 +277,21 @@ def locality_metadata(connection: Any = Depends(get_db)) -> dict[str, Any]:
             "Population is intentionally null because 2011 census wards do not align with current localities.",
         ],
     }
+
+
+@app.post("/api/v1/search/interpret")
+def interpret_search(
+    payload: SearchInterpretRequest,
+    connection: Any = Depends(get_db),
+) -> dict[str, Any]:
+    try:
+        return search.interpret_search(
+            connection,
+            payload.query,
+            payload.locality_id,
+        )
+    except ValueError as error:
+        raise _client_error(error) from error
 
 
 @app.get("/api/v1/meta/data-sources")
@@ -289,6 +347,74 @@ def market_overview(
 ) -> dict[str, Any]:
     try:
         return market.city_overview(connection, category, radius_m)
+    except ValueError as error:
+        raise _client_error(error) from error
+
+
+@app.get("/api/v1/market/locality")
+def market_locality(
+    locality: str = Query(...),
+    category: str = Query(default="cafes"),
+    radius_m: int = Query(default=DEFAULT_RADIUS_M),
+    connection: Any = Depends(get_db),
+) -> dict[str, Any]:
+    try:
+        return market.locality_market_metrics(
+            connection,
+            locality,
+            category,
+            radius_m,
+        )
+    except ValueError as error:
+        raise _client_error(error) from error
+
+
+@app.get("/api/v1/market/localities")
+def market_localities(
+    category: str = Query(default="cafes"),
+    radius_m: int = Query(default=DEFAULT_RADIUS_M),
+    connection: Any = Depends(get_db),
+) -> dict[str, Any]:
+    try:
+        return market.all_locality_metrics(connection, category, radius_m)
+    except ValueError as error:
+        raise _client_error(error) from error
+
+
+@app.get("/api/v1/market/business")
+def market_business(
+    osm_id: str = Query(..., min_length=1),
+    category: str | None = Query(default=None),
+    radius_m: int = Query(default=DEFAULT_RADIUS_M),
+    connection: Any = Depends(get_db),
+) -> dict[str, Any]:
+    try:
+        return market.business_market_metrics(
+            connection,
+            osm_id,
+            category,
+            radius_m,
+        )
+    except ValueError as error:
+        raise _client_error(error) from error
+
+
+@app.get("/api/v1/market/business/competitors")
+def market_business_competitors(
+    osm_id: str = Query(..., min_length=1),
+    category: str | None = Query(default=None),
+    radius_m: int = Query(default=DEFAULT_RADIUS_M),
+    limit: int = Query(default=50, ge=1, le=200),
+    connection: Any = Depends(get_db),
+) -> dict[str, Any]:
+    try:
+        return competitors.nearby_competitors_for_business(
+            connection,
+            osm_id,
+            category,
+            radius_m,
+            limit,
+        )
     except ValueError as error:
         raise _client_error(error) from error
 
@@ -364,6 +490,26 @@ def market_risk(
         raise _client_error(error) from error
 
 
+@app.post("/api/v1/market/business/risk")
+def market_business_risk(
+    payload: BusinessRiskRequest,
+    connection: Any = Depends(get_db),
+) -> dict[str, Any]:
+    try:
+        return risk.estimate_risk_for_business(
+            connection,
+            payload.osm_id,
+            payload.category,
+            payload.radius_m,
+            payload.monthly_rent,
+            payload.staff_expenses,
+            payload.other_monthly_expenses,
+            payload.expected_monthly_revenue,
+        )
+    except ValueError as error:
+        raise _client_error(error) from error
+
+
 @app.post("/api/v1/financial/estimate")
 def financial_estimate(payload: FinancialEstimateRequest) -> dict[str, Any]:
     try:
@@ -380,3 +526,9 @@ def financial_estimate(payload: FinancialEstimateRequest) -> dict[str, Any]:
         )
     except ValueError as error:
         raise _client_error(error) from error
+
+
+@app.post("/api/v1/assistant/chat")
+async def market_assistant(payload: AssistantChatRequest) -> dict[str, Any]:
+    messages = [message.model_dump() for message in payload.messages]
+    return await asyncio.to_thread(assistant_chat, messages, payload.context)

@@ -43,23 +43,14 @@ def _factor(
     }
 
 
-def estimate_risk(
-    connection: Any,
-    locality_id: str,
-    category_id: str | None = None,
-    radius_m: int | None = None,
+def _risk_from_snapshot(
+    snapshot: dict[str, Any],
+    category: dict[str, Any],
     monthly_rent: float | None = None,
     staff_expenses: float | None = None,
     other_monthly_expenses: float | None = None,
     expected_monthly_revenue: float | None = None,
 ) -> dict[str, Any]:
-    category = market.get_category_or_raise(category_id)
-    snapshot = market.locality_market_metrics(
-        connection,
-        locality_id,
-        category["id"],
-        radius_m,
-    )
     weights = category["risk_weights"]
     scores = snapshot["scores"]
     factors = [
@@ -188,8 +179,9 @@ def estimate_risk(
             "It is not a prediction of business failure or profit."
         )
 
-    return {
+    result = {
         "locality": snapshot["locality"],
+        "analysis_center": snapshot["analysis_center"],
         "category": snapshot["category"],
         "catchment": snapshot["catchment"],
         "risk_score": risk_score,
@@ -224,3 +216,60 @@ def estimate_risk(
         ],
         "sources": snapshot["sources"],
     }
+    if snapshot.get("business") is not None:
+        result["business"] = snapshot["business"]
+    return result
+
+
+def estimate_risk(
+    connection: Any,
+    locality_id: str,
+    category_id: str | None = None,
+    radius_m: int | None = None,
+    monthly_rent: float | None = None,
+    staff_expenses: float | None = None,
+    other_monthly_expenses: float | None = None,
+    expected_monthly_revenue: float | None = None,
+) -> dict[str, Any]:
+    category = market.get_category_or_raise(category_id)
+    snapshot = market.locality_market_metrics(
+        connection,
+        locality_id,
+        category["id"],
+        radius_m,
+    )
+    return _risk_from_snapshot(
+        snapshot,
+        category,
+        monthly_rent,
+        staff_expenses,
+        other_monthly_expenses,
+        expected_monthly_revenue,
+    )
+
+
+def estimate_risk_for_business(
+    connection: Any,
+    osm_id: str,
+    category_id: str | None = None,
+    radius_m: int | None = None,
+    monthly_rent: float | None = None,
+    staff_expenses: float | None = None,
+    other_monthly_expenses: float | None = None,
+    expected_monthly_revenue: float | None = None,
+) -> dict[str, Any]:
+    snapshot = market.business_market_metrics(
+        connection,
+        osm_id,
+        category_id,
+        radius_m,
+    )
+    category = market.get_category_or_raise(snapshot["category"]["id"])
+    return _risk_from_snapshot(
+        snapshot,
+        category,
+        monthly_rent,
+        staff_expenses,
+        other_monthly_expenses,
+        expected_monthly_revenue,
+    )

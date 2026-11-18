@@ -1,23 +1,26 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+  Activity,
   ArrowDownRight,
   ArrowUpRight,
-  Copy,
+  BarChart3,
   Info,
-  Plus,
+  LineChart as LineChartIcon,
+  MapPin,
+  Search,
   Sparkles,
   Store,
-  TrendingDown,
   TrendingUp,
-  X,
 } from 'lucide-react'
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
-  ComposedChart,
+  Legend,
   Line,
   LineChart,
   ReferenceLine,
@@ -32,596 +35,527 @@ import { PanelHeader } from '../components/ui/PanelHeader'
 import { MetricCard } from '../components/ui/MetricCard'
 import { Select } from '../components/ui/Select'
 import { CategoryGlyph } from '../components/ui/CategoryGlyph'
-import { Toast } from '../components/ui/Toast'
+import { Badge } from '../components/ui/Badge'
 import { ChartTooltip } from '../components/charts/ChartTooltip'
+import { EmptyBlock, ErrorBlock, LoadingBlock, SourceNote } from '../components/domain/DataState'
 import { useMarket } from '../context/MarketContext'
-import { categories, getCategory } from '../data/categories'
-import {
-  decliningCategories,
-  growingCategories,
-  milestoneNotes,
-  trendHeadline,
-  trendYears,
-  yearlyRegistrations,
-  yearlyTable,
-} from '../data/trends'
-import { cn, formatCompact, formatNumber, signed } from '../lib/utils'
+import { useApiResource } from '../hooks/useApiResource'
+import { marketApi } from '../lib/api'
+import { cn, formatNumber } from '../lib/utils'
 
-const trajectoryColors = ['#4946B4', '#14958C', '#D0922B']
-const sparkNet = yearlyRegistrations.map((year) => year.registrations - year.closures)
-const sparkRegistrations = yearlyRegistrations.map((year) => year.registrations)
-const sparkClosures = yearlyRegistrations.map((year) => year.closures)
+function monthLabel(period) {
+  if (!period) return ''
+  const [, month] = period.split('-')
+  const date = new Date(2000, Number(month) - 1, 1)
+  return date.toLocaleString('en-IN', { month: 'short' })
+}
+
+function signedPct(value) {
+  if (value === null || value === undefined) return '—'
+  return `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
+}
 
 export function MarketTrends() {
   const navigate = useNavigate()
-  const { category, categoryId, setCategoryId } = useMarket()
-  const [compareIds, setCompareIds] = useState(() => {
-    const defaults = [categoryId, 'tech', 'wellness'].filter(
-      (id, index, list) => list.indexOf(id) === index,
-    )
-    return defaults.slice(0, 3)
-  })
-  const [toast, setToast] = useState(null)
-  const closeToast = useCallback(() => setToast(null), [])
+  const { categories, category, categoryId, setCategoryId, dataReady, metaLoading, metaError, reloadMeta } =
+    useMarket()
+  const [circleNo, setCircleNo] = useState(null)
 
-  const comparisonCategories = compareIds.map((id) => getCategory(id))
-
-  const trajectoryData = useMemo(
-    () =>
-      trendYears.map((year, index) => {
-        const point = { year }
-        comparisonCategories.forEach((item) => {
-          point[item.id] = item.trend[index]
-        })
-        return point
-      }),
-    [comparisonCategories],
+  const result = useApiResource(
+    ({ signal }) =>
+      marketApi.getTrends(
+        { category: categoryId, circle_no: circleNo ?? undefined },
+        { signal },
+      ),
+    [categoryId, circleNo],
+    { enabled: dataReady },
   )
 
-  const growthData = yearlyRegistrations.map((year) => ({
-    year: year.year,
-    growth: year.growth,
-  }))
+  const data = result.data
+  const ghmc = data?.ghmc_licence_activity
+  const annual = ghmc?.annual_totals ?? []
+  const monthly = useMemo(() => ghmc?.monthly ?? [], [ghmc])
+  const google = data?.google_trends
+  const latestAnnual = annual[annual.length - 1]
+  const priorAnnual = annual[annual.length - 2]
 
-  const availableCategories = categories.filter((item) => !compareIds.includes(item.id))
+  const monthlyChart = useMemo(
+    () =>
+      monthly.map((row) => ({
+        ...row,
+        label: monthLabel(row.period),
+        fullLabel: row.period,
+      })),
+    [monthly],
+  )
 
-  const addComparison = (id) => {
-    setCompareIds((current) => {
-      if (current.includes(id) || current.length >= 3) return current
-      return [...current, id]
-    })
-  }
+  const googleChart = useMemo(
+    () =>
+      (google?.monthly ?? []).map((row) => ({
+        ...row,
+        label: monthLabel(row.period),
+      })),
+    [google],
+  )
 
-  const removeComparison = (id) => {
-    setCompareIds((current) => (current.length <= 1 ? current : current.filter((entry) => entry !== id)))
-  }
+  const circleData = useMemo(
+    () =>
+      (ghmc?.circles ?? []).slice(0, 8).map((circle) => ({
+        name: circle.circle_name,
+        y2022: circle.applications_by_year?.['2022'] ?? 0,
+        y2023: circle.applications_by_year?.['2023'] ?? 0,
+        change: circle.yoy_change_2022_to_2023_pct,
+        total: circle.total_2022_2023,
+      })),
+    [ghmc],
+  )
 
-  const copyDataset = async () => {
-    const header = 'Year,New registrations,Estimated closures,Net additions,YoY growth %,Closure ratio %'
-    const rows = yearlyTable.map((year) =>
-      [
-        year.year,
-        year.registrations,
-        year.closures,
-        year.net,
-        year.growth,
-        year.closureRatio,
-      ].join(','),
+  const circleOptions = useMemo(
+    () =>
+      (ghmc?.circles ?? []).map((circle) => ({
+        value: String(circle.circle_no),
+        label: circle.circle_name,
+        hint: `${formatNumber(circle.total_2022_2023)} applications`,
+        icon: <MapPin className="h-3.5 w-3.5 text-brand-500" />,
+      })),
+    [ghmc],
+  )
+
+  if (metaLoading || result.loading) {
+    return (
+      <div className="space-y-5">
+        <PageHeader eyebrow="Historical intelligence" title="Market trends" location="Hyderabad · 2022–2023" />
+        <LoadingBlock label="Loading recorded GHMC activity and available search-interest trends…" />
+      </div>
     )
-    try {
-      await navigator.clipboard.writeText([header, ...rows].join('\n'))
-      setToast('Yearly registration dataset copied')
-    } catch {
-      setToast('Clipboard unavailable in this browser')
-    }
+  }
+
+  const pageError = metaError || result.error
+  if (pageError) {
+    return (
+      <div className="space-y-5">
+        <PageHeader eyebrow="Historical intelligence" title="Market trends" location="Hyderabad · 2022–2023" />
+        <ErrorBlock
+          error={pageError}
+          onRetry={() => {
+            if (metaError) reloadMeta()
+            else result.reload()
+          }}
+        />
+      </div>
+    )
   }
 
   return (
     <div className="space-y-5">
       <PageHeader
         eyebrow="Historical intelligence"
-        title="Market trends that compound"
-        description="Eight years of Hyderabad business formation, closure pressure, and category momentum — read as one continuous signal."
-        location="Hyderabad · 2018–2025"
+        title="Market trends"
+        description="Read the supplied historical activity without pretending it is current category demand. GHMC values are reported licence applications by circle; Google Trends values are relative search interest."
+        location={circleNo ? `${circleData[0]?.name ?? 'Selected circle'} · GHMC` : 'Hyderabad · GHMC 2022–2023'}
         actions={
           <>
-            <button type="button" className="btn-secondary" onClick={copyDataset}>
-              <Copy className="h-4 w-4 text-ink-mute" />
-              Copy dataset
+            <button type="button" className="btn-secondary" onClick={() => navigate('/market-explorer')}>
+              <MapPin className="h-4 w-4" />
+              Locality explorer
             </button>
             <button type="button" className="btn-primary" onClick={() => navigate('/market-assistant')}>
               <Sparkles className="h-4 w-4" />
-              Generate trend brief
+              Ask the assistant
             </button>
           </>
         }
       />
 
+      <GlassPanel className="flex flex-wrap items-center gap-3 p-3.5">
+        <div className="flex items-center gap-2.5 rounded-xl bg-white/45 py-1 pl-1 pr-3">
+          <CategoryGlyph icon={category.icon} tint={category.tint} size="md" clay />
+          <div className="leading-tight">
+            <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-ink-faint">Search-interest scope</p>
+            <p className="text-[11.5px] font-extrabold text-ink">{category.name}</p>
+          </div>
+        </div>
+        <div className="h-7 w-px bg-line/80" />
+        <div className="min-w-[190px] flex-1 sm:max-w-[250px]">
+          <Select
+            value={categoryId ?? undefined}
+            onChange={setCategoryId}
+            size="sm"
+            searchable
+            align="left"
+            ariaLabel="Trends category"
+            options={categories.map((item) => ({
+              value: item.id,
+              label: item.name,
+              hint: item.aliases?.length ? item.aliases.slice(0, 2).join(', ') : 'Approved category',
+              icon: <CategoryGlyph icon={item.icon} tint={item.tint} size="sm" />,
+            }))}
+          />
+        </div>
+        <div className="min-w-[180px] flex-1 sm:max-w-[230px]">
+          <Select
+            value={circleNo === null ? '' : String(circleNo)}
+            onChange={(value) => setCircleNo(value ? Number(value) : null)}
+            size="sm"
+            searchable
+            ariaLabel="GHMC circle"
+            placeholder="All GHMC circles"
+            options={circleOptions}
+          />
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {circleNo !== null && (
+            <button type="button" onClick={() => setCircleNo(null)} className="chip text-brand-800">
+              Clear circle filter
+            </button>
+          )}
+          <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold text-gold-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-gold-500" />
+            Recorded historical data
+          </span>
+        </div>
+      </GlassPanel>
+
       <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          label="2025 registrations"
-          value={formatNumber(trendHeadline.registrations2025)}
+          label={`${latestAnnual?.year ?? 'Latest'} applications`}
+          value={formatNumber(latestAnnual?.applications ?? 0)}
           icon={Store}
           tone="brand"
-          delta={trendHeadline.yoyGrowth}
-          deltaLabel="vs 2024"
-          spark={sparkRegistrations}
+          footnote={circleNo ? 'Selected GHMC circle' : 'All loaded GHMC circles'}
         />
         <MetricCard
-          label="Net additions"
-          value={formatNumber(trendHeadline.netAdditions)}
-          icon={TrendingUp}
-          tone="jade"
-          delta={12.8}
-          deltaLabel="vs 2024"
-          spark={sparkNet}
+          label="2022 → 2023 change"
+          value={signedPct(ghmc?.yoy_change_2022_to_2023_pct)}
+          icon={
+            (ghmc?.yoy_change_2022_to_2023_pct ?? 0) >= 0 ? ArrowUpRight : ArrowDownRight
+          }
+          tone={(ghmc?.yoy_change_2022_to_2023_pct ?? 0) >= 0 ? 'jade' : 'coral'}
+          footnote={
+            priorAnnual
+              ? `${formatNumber(priorAnnual.applications)} in ${priorAnnual.year}`
+              : 'Prior-year total unavailable'
+          }
         />
         <MetricCard
-          label="Estimated closures"
-          value={formatNumber(trendHeadline.closures2025)}
-          icon={TrendingDown}
-          tone="coral"
-          delta={7.9}
-          deltaGood={false}
-          deltaLabel="vs 2024"
-          spark={sparkClosures}
-        />
-        <MetricCard
-          label="Five-year CAGR"
-          value="12.1%"
-          icon={ArrowUpRight}
+          label="GHMC circles"
+          value={formatNumber(ghmc?.circle_count ?? 0)}
+          icon={BarChart3}
           tone="gold"
-          footnote="Compound annual growth, registrations 2019–2025"
+          footnote="Circles represented in the recorded series"
+        />
+        <MetricCard
+          label="Google Trends"
+          value={google ? `${google.latest_interest}/100` : '—'}
+          icon={Search}
+          tone="sea"
+          footnote={
+            google
+              ? `${google.term_label} · Telangana relative interest`
+              : 'No mapped trend term for this category'
+          }
         />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.58fr_1fr]">
         <GlassPanel className="p-5">
           <PanelHeader
-            eyebrow="Formation vs closure"
-            title="New business additions by year"
-            description="Annual registrations against estimated closures across Hyderabad."
+            eyebrow="GHMC activity"
+            title="Reported licence applications"
+            description="Monthly application aggregates from the supplied GHMC series. This is not approved openings or current demand."
             icon={TrendingUp}
             action={
-              <div className="flex items-center gap-3 text-[10px] font-semibold text-ink-mute">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-sm bg-brand-600" />
-                  Registrations
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-coral-500" />
-                  Estimated closures
-                </span>
-              </div>
+              <span className="chip">
+                {circleNo ? 'Selected circle' : 'All GHMC circles'} · 2022–23
+              </span>
             }
           />
-          <div className="mt-4 h-[278px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={yearlyRegistrations} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
-                <defs>
-                  <linearGradient id="trendBarFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#5A57D4" />
-                    <stop offset="100%" stopColor="#35328C" stopOpacity={0.82} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 5" stroke="#EAE3D7" vertical={false} />
-                <XAxis
-                  dataKey="year"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 10.5, fill: '#8B90A2', fontWeight: 600 }}
-                  dy={5}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  width={50}
-                  tick={{ fontSize: 10.5, fill: '#8B90A2', fontWeight: 600 }}
-                  tickFormatter={(value) => formatCompact(value)}
-                />
-                <Tooltip content={<ChartTooltip formatter={(value) => formatNumber(value)} />} />
-                <Bar
-                  dataKey="registrations"
-                  name="New registrations"
-                  fill="url(#trendBarFill)"
-                  radius={[6, 6, 2, 2]}
-                  barSize={26}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="closures"
-                  name="Estimated closures"
-                  stroke="#DC6A5F"
-                  strokeWidth={2.2}
-                  strokeDasharray="5 4"
-                  dot={{ r: 3, fill: '#DC6A5F', stroke: '#fff', strokeWidth: 1.5 }}
-                  activeDot={{ r: 4.5, stroke: '#fff', strokeWidth: 2, fill: '#DC6A5F' }}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line/60 pt-3">
-            <p className="flex items-center gap-1.5 text-[10.5px] font-medium text-ink-mute">
-              <span className="rounded-md bg-jade-50 px-1.5 py-0.5 text-[9.5px] font-bold text-jade-700">
-                +{formatNumber(trendHeadline.netAdditions)}
-              </span>
-              net new businesses in 2025 — the strongest annual gain in the series.
-            </p>
-            <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
-              Illustrative historical model
-            </span>
-          </div>
-        </GlassPanel>
-
-        <GlassPanel className="p-5">
-          <PanelHeader
-            eyebrow="Rate of change"
-            title="Year-over-year growth"
-            description="Registration momentum, with the 2020 contraction preserved."
-            icon={TrendingDown}
-          />
-          <div className="mt-4 h-[218px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={growthData} margin={{ top: 8, right: 4, bottom: 0, left: -22 }}>
-                <CartesianGrid strokeDasharray="3 5" stroke="#EAE3D7" vertical={false} />
-                <XAxis
-                  dataKey="year"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 9.5, fill: '#8B90A2', fontWeight: 600 }}
-                  dy={5}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  width={46}
-                  tick={{ fontSize: 9.5, fill: '#8B90A2', fontWeight: 600 }}
-                  tickFormatter={(value) => `${value}%`}
-                />
-                <Tooltip content={<ChartTooltip formatter={(value) => `${value.toFixed(1)}%`} />} />
-                <ReferenceLine y={0} stroke="#C9C0AF" strokeWidth={1} />
-                <Bar dataKey="growth" name="YoY growth" radius={[4, 4, 0, 0]} barSize={20}>
-                  {growthData.map((entry) => (
-                    <Cell key={entry.year} fill={entry.growth < 0 ? '#DC6A5F' : '#1D9B6A'} fillOpacity={0.86} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-2 space-y-1.5 border-t border-line/60 pt-3">
-            <div className="flex items-center justify-between text-[10px] font-semibold">
-              <span className="text-ink-mute">Five-year CAGR</span>
-              <span className="font-bold text-jade-700">{signed(trendHeadline.fiveYearCagr)}</span>
-            </div>
-            <div className="flex items-center justify-between text-[10px] font-semibold">
-              <span className="text-ink-mute">Closure ratio · 2025</span>
-              <span className="font-bold text-ink">
-                {((trendHeadline.closures2025 / trendHeadline.registrations2025) * 100).toFixed(1)}%
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-[10px] font-semibold">
-              <span className="text-ink-mute">Recovery year</span>
-              <span className="font-bold text-ink">2021 · +65.4%</span>
-            </div>
-          </div>
-        </GlassPanel>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
-        <GlassPanel className="p-5">
-          <PanelHeader
-            eyebrow="Category momentum"
-            title="Category growth comparison"
-            description="Normalised registration index, 2018 = 100. Compare up to three categories."
-            icon={TrendingUp}
-            action={
-              <div className="flex items-center gap-1.5">
-                {comparisonCategories.map((item, index) => (
-                  <span
-                    key={item.id}
-                    className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9.5px] font-bold"
-                    style={{
-                      borderColor: `${trajectoryColors[index]}35`,
-                      backgroundColor: `${trajectoryColors[index]}12`,
-                      color: trajectoryColors[index],
-                    }}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: trajectoryColors[index] }} />
-                    {item.shortName}
-                    <button
-                      type="button"
-                      onClick={() => removeComparison(item.id)}
-                      disabled={compareIds.length <= 1}
-                      className="ml-0.5 rounded-full p-0.5 transition-opacity hover:opacity-70 disabled:opacity-20"
-                      aria-label={`Remove ${item.name}`}
-                    >
-                      <X className="h-2.5 w-2.5" />
-                    </button>
-                  </span>
-                ))}
-                {compareIds.length < 3 && (
-                  <Select
-                    value=""
-                    onChange={addComparison}
-                    size="sm"
-                    searchable
-                    placeholder="+ Add"
-                    className="w-[92px]"
-                    buttonClassName="h-6 min-h-0 rounded-full border-dashed px-2 text-[9.5px]"
-                    menuClassName="w-[240px]"
-                    ariaLabel="Add category to comparison"
-                    options={availableCategories.map((item) => ({
-                      value: item.id,
-                      label: item.name,
-                      hint: `${signed(item.growth)} YoY`,
-                      icon: <CategoryGlyph icon={item.icon} tint={item.tint} size="sm" />,
-                    }))}
+          <div className="mt-4 h-[286px]">
+            {monthlyChart.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={monthlyChart} margin={{ top: 8, right: 10, bottom: 0, left: -16 }}>
+                  <defs>
+                    <linearGradient id="ghmcActivityFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#4946B4" stopOpacity={0.26} />
+                      <stop offset="100%" stopColor="#4946B4" stopOpacity={0.01} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 5" stroke="#EAE3D7" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 9.5, fill: '#8B90A2', fontWeight: 600 }}
+                    dy={5}
+                    interval="preserveStartEnd"
                   />
-                )}
-              </div>
-            }
-          />
-          <div className="mt-4 h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trajectoryData} margin={{ top: 8, right: 14, bottom: 0, left: -14 }}>
-                <CartesianGrid strokeDasharray="3 5" stroke="#EAE3D7" vertical={false} />
-                <XAxis
-                  dataKey="year"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 10.5, fill: '#8B90A2', fontWeight: 600 }}
-                  dy={5}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  width={48}
-                  tick={{ fontSize: 10.5, fill: '#8B90A2', fontWeight: 600 }}
-                  domain={['auto', 'auto']}
-                />
-                <Tooltip content={<ChartTooltip formatter={(value) => `${Math.round(value)} index`} />} />
-                <ReferenceLine y={100} stroke="#D5CCBA" strokeDasharray="4 4" />
-                {comparisonCategories.map((item, index) => (
-                  <Line
-                    key={item.id}
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    width={52}
+                    tick={{ fontSize: 9.5, fill: '#8B90A2', fontWeight: 600 }}
+                    tickFormatter={(value) => formatNumber(value)}
+                  />
+                  <Tooltip
+                    content={
+                      <ChartTooltip
+                        formatter={(value) => `${formatNumber(value)} applications`}
+                        labelSuffix="reported"
+                      />
+                    }
+                  />
+                  <Area
                     type="monotone"
-                    dataKey={item.id}
-                    name={item.shortName}
-                    stroke={trajectoryColors[index]}
-                    strokeWidth={item.id === categoryId ? 2.8 : 1.9}
-                    dot={false}
-                    activeDot={{ r: 4, stroke: '#fff', strokeWidth: 2 }}
+                    dataKey="applications"
+                    name="Applications"
+                    stroke="#4946B4"
+                    strokeWidth={2.3}
+                    fill="url(#ghmcActivityFill)"
+                    activeDot={{ r: 4, stroke: '#fff', strokeWidth: 2, fill: '#4946B4' }}
                   />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyBlock
+                className="h-full"
+                title="No GHMC monthly activity"
+                description="The selected circle has no loaded monthly application rows."
+              />
+            )}
           </div>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-line/60 pt-3">
-            <p className="text-[10px] font-medium text-ink-mute">
-              {category.name} is indexed at{" "}
-              <span className="font-bold text-ink">{category.trend[category.trend.length - 1]}</span> in 2025 —{" "}
-              {category.trend[category.trend.length - 1] - 100}% above its 2018 base.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setCategoryId(categoryId)
-                navigate('/market-assistant')
-              }}
-              className="inline-flex items-center gap-1 text-[9.5px] font-bold text-brand-700 hover:text-brand-900"
-            >
-              Read the implication
-              <ArrowUpRight className="h-3 w-3" />
-            </button>
-          </div>
-        </GlassPanel>
-
-        <div className="space-y-4">
-          <GlassPanel className="p-5">
-            <PanelHeader
-              eyebrow="Accelerating"
-              title="Growing categories"
-              description="Registrations expanding faster than the city average."
-              icon={ArrowUpRight}
-            />
-            <div className="mt-3 space-y-1.5">
-              {growingCategories.map((item) => {
-                const categoryItem = getCategory(item.id)
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setCategoryId(item.id)}
-                    className={cn(
-                      'flex w-full items-center gap-2.5 rounded-xl border p-2 text-left transition-colors',
-                      categoryId === item.id
-                        ? 'border-brand-200 bg-brand-50/55'
-                        : 'border-transparent hover:border-line/60 hover:bg-white/50',
-                    )}
-                  >
-                    <CategoryGlyph icon={categoryItem.icon} tint={categoryItem.tint} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[11px] font-bold text-ink">{item.label}</p>
-                      <p className="text-[9px] font-medium text-ink-faint">{formatNumber(item.volume)} businesses</p>
-                    </div>
-                    <span className="inline-flex items-center gap-0.5 rounded-md border border-jade-200/60 bg-jade-50 px-1.5 py-0.5 text-[9.5px] font-bold text-jade-700">
-                      <ArrowUpRight className="h-2.5 w-2.5" />
-                      {signed(item.change)}
-                    </span>
-                  </button>
-                )
-              })}
+          <div className="mt-2 grid gap-2 border-t border-line/60 pt-3 sm:grid-cols-3">
+            <div>
+              <p className="label">Reference years</p>
+              <p className="mt-0.5 text-[11px] font-bold text-ink">2022–2023</p>
             </div>
-          </GlassPanel>
-
-          <GlassPanel className="p-5">
-            <PanelHeader
-              eyebrow="Cooling"
-              title="Lagging categories"
-              description="Growth below Hyderabad’s 11.4% market pace."
-              icon={ArrowDownRight}
-            />
-            <div className="mt-3 space-y-1.5">
-              {decliningCategories.map((item) => {
-                const categoryItem = getCategory(item.id)
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setCategoryId(item.id)}
-                    className={cn(
-                      'flex w-full items-center gap-2.5 rounded-xl border p-2 text-left transition-colors',
-                      categoryId === item.id
-                        ? 'border-brand-200 bg-brand-50/55'
-                        : 'border-transparent hover:border-line/60 hover:bg-white/50',
-                    )}
-                  >
-                    <CategoryGlyph icon={categoryItem.icon} tint={categoryItem.tint} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[11px] font-bold text-ink">{item.label}</p>
-                      <p className="text-[9px] font-medium text-ink-faint">{formatNumber(item.volume)} businesses</p>
-                    </div>
-                    <span className="inline-flex items-center gap-0.5 rounded-md border border-gold-200/60 bg-gold-50 px-1.5 py-0.5 text-[9.5px] font-bold text-gold-700">
-                      {signed(item.change)}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-            <div className="mt-2.5 flex items-start gap-2 rounded-xl border border-line/60 bg-white/40 p-2.5">
-              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-600" />
-              <p className="text-[9px] leading-relaxed text-ink-mute">
-                Lagging growth is not decline. These categories still add businesses — just at a slower rate than
-                the city baseline.
+            <div>
+              <p className="label">Coverage</p>
+              <p className="mt-0.5 text-[11px] font-bold text-ink">
+                {circleNo ? 'One GHMC circle' : `${ghmc?.circle_count ?? 0} circles`}
               </p>
             </div>
-          </GlassPanel>
-        </div>
+            <div>
+              <p className="label">Series length</p>
+              <p className="mt-0.5 text-[11px] font-bold text-ink">{monthly.length} recorded months</p>
+            </div>
+          </div>
+        </GlassPanel>
+
+        <GlassPanel className="p-5">
+          <PanelHeader
+            eyebrow="Relative interest"
+            title={google ? google.term_label : 'Google Trends availability'}
+            description={
+              google
+                ? 'Relative search interest in Telangana. This is not search volume or customer demand.'
+                : 'Only five approved categories have a mapped search-term series.'
+            }
+            icon={LineChartIcon}
+            action={
+              google ? <Badge tone="neutral">0–100 relative</Badge> : <Badge tone="gold">Not mapped</Badge>
+            }
+          />
+          {google ? (
+            <>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="rounded-xl border border-line/60 bg-white/45 px-2.5 py-2">
+                  <p className="text-[8px] font-bold uppercase tracking-[0.08em] text-ink-faint">Latest week</p>
+                  <p className="tabular mt-0.5 text-[14px] font-extrabold text-ink">
+                    {google.latest_interest}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-line/60 bg-white/45 px-2.5 py-2">
+                  <p className="text-[8px] font-bold uppercase tracking-[0.08em] text-ink-faint">Recent avg.</p>
+                  <p className="tabular mt-0.5 text-[14px] font-extrabold text-ink">
+                    {google.recent_52_week_average ?? '—'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-line/60 bg-white/45 px-2.5 py-2">
+                  <p className="text-[8px] font-bold uppercase tracking-[0.08em] text-ink-faint">52-wk change</p>
+                  <p
+                    className={cn(
+                      'tabular mt-0.5 text-[14px] font-extrabold',
+                      (google.last_52_weeks_vs_previous_52_weeks_change_pct ?? 0) >= 0
+                        ? 'text-jade-700'
+                        : 'text-coral-600',
+                    )}
+                  >
+                    {signedPct(google.last_52_weeks_vs_previous_52_weeks_change_pct)}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 h-[238px]">
+                {googleChart.length ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={googleChart} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+                      <CartesianGrid strokeDasharray="3 5" stroke="#EAE3D7" vertical={false} />
+                      <XAxis
+                        dataKey="label"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 9, fill: '#8B90A2', fontWeight: 600 }}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        domain={[0, 100]}
+                        axisLine={false}
+                        tickLine={false}
+                        width={44}
+                        tick={{ fontSize: 9, fill: '#8B90A2', fontWeight: 600 }}
+                      />
+                      <Tooltip content={<ChartTooltip formatter={(value) => `${value}/100 relative interest`} />} />
+                      <ReferenceLine y={50} stroke="#D5CCBA" strokeDasharray="4 4" />
+                      <Line
+                        type="monotone"
+                        dataKey="average_interest"
+                        name="Relative interest"
+                        stroke="#14958C"
+                        strokeWidth={2.2}
+                        dot={false}
+                        activeDot={{ r: 4, stroke: '#fff', strokeWidth: 2, fill: '#14958C' }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <EmptyBlock className="h-full" title="No monthly trend points" />
+                )}
+              </div>
+              <p className="mt-1.5 flex items-start gap-1.5 text-[9px] leading-relaxed text-ink-faint">
+                <Info className="mt-0.5 h-3 w-3 shrink-0" />
+                {google.note}
+              </p>
+            </>
+          ) : (
+            <div className="mt-4">
+              <EmptyBlock
+                title="No Google Trends series for this category"
+                description={
+                  data?.google_trends_note ||
+                  'The approved trend categories are restaurants, grocery, fashion, pharmacy, and fitness.'
+                }
+                icon={Search}
+              />
+              <div className="mt-3 rounded-xl border border-brand-100/70 bg-brand-50/40 p-3">
+                <p className="text-[10px] font-bold text-brand-900">What is still available</p>
+                <p className="mt-0.5 text-[9px] leading-relaxed text-ink-mute">
+                  The GHMC application activity is not category-specific. It remains visible for historical
+                  context, but it must not be presented as demand for {category.name}.
+                </p>
+              </div>
+            </div>
+          )}
+        </GlassPanel>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.55fr_1fr]">
-        <GlassPanel className="overflow-hidden p-5">
+        <GlassPanel className="p-5">
           <PanelHeader
-            eyebrow="Complete series"
-            title="Yearly registration table"
-            description="The full 2018–2025 series, including net additions and closure ratio."
-            icon={Store}
-            action={
-              <button type="button" onClick={copyDataset} className="btn-secondary h-8 px-2.5 text-[10.5px]">
-                <Copy className="h-3 w-3" />
-                Copy CSV
-              </button>
-            }
+            eyebrow="Circle comparison"
+            title="Application activity by GHMC circle"
+            description="Recorded 2022 and 2023 aggregates. Circle boundaries do not map one-to-one onto localities."
+            icon={BarChart3}
+            action={<span className="chip">Top {circleData.length} circles</span>}
           />
-          <div className="mt-3 overflow-x-auto scroll-slim">
-            <table className="w-full min-w-[560px] border-collapse text-left">
-              <thead>
-                <tr className="border-b border-line/70">
-                  {['Year', 'Registrations', 'Closures', 'Net additions', 'YoY growth', 'Closure ratio'].map(
-                    (header) => (
-                      <th
-                        key={header}
-                        className="pb-2 pr-3 text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-faint first:pl-1.5"
-                      >
-                        {header}
-                      </th>
-                    ),
-                  )}
+          <div className="mt-4 h-[286px]">
+            {circleData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={circleData} margin={{ top: 8, right: 8, bottom: 0, left: -18 }} barGap={3}>
+                  <CartesianGrid strokeDasharray="3 5" stroke="#EAE3D7" vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 8.5, fill: '#6B7285', fontWeight: 600 }}
+                    interval={0}
+                    angle={-24}
+                    textAnchor="end"
+                    height={52}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    width={48}
+                    tick={{ fontSize: 9, fill: '#8B90A2', fontWeight: 600 }}
+                    tickFormatter={(value) => formatNumber(value)}
+                  />
+                  <Tooltip content={<ChartTooltip formatter={(value) => `${formatNumber(value)} applications`} />} />
+                  <Legend
+                    wrapperStyle={{ fontSize: 9, fontWeight: 600, color: '#6B7285' }}
+                    iconType="circle"
+                    iconSize={6}
+                  />
+                  <Bar dataKey="y2022" name="2022" fill="#A9A6D8" radius={[4, 4, 0, 0]} barSize={12}>
+                    {circleData.map((entry) => (
+                      <Cell key={`2022-${entry.name}`} fill="#A9A6D8" />
+                    ))}
+                  </Bar>
+                  <Bar dataKey="y2023" name="2023" fill="#4946B4" radius={[4, 4, 0, 0]} barSize={12} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyBlock className="h-full" title="No circle comparison" />
+            )}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-line/60 pt-3">
+            <p className="text-[10px] font-medium text-ink-mute">
+              The annual series is not a current market-growth indicator and cannot identify locality openings.
+            </p>
+            <span className="chip">GHMC circles</span>
+          </div>
+        </GlassPanel>
+
+        <GlassPanel className="p-5">
+          <PanelHeader
+            eyebrow="Series detail"
+            title="Annual totals"
+            description="All recorded years in the supplied GHMC series."
+            icon={Activity}
+          />
+          <div className="mt-3 overflow-hidden rounded-xl border border-line/60">
+            <table className="w-full text-left">
+              <thead className="bg-white/55 text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">
+                <tr>
+                  <th className="px-3 py-2.5">Year</th>
+                  <th className="px-3 py-2.5 text-right">Applications</th>
+                  <th className="px-3 py-2.5 text-right">Change</th>
                 </tr>
               </thead>
               <tbody>
-                {yearlyTable.map((year) => (
-                  <tr
-                    key={year.year}
-                    className="border-b border-line/50 transition-colors last:border-0 hover:bg-white/55"
-                  >
-                    <td className="py-2.5 pl-1.5 pr-3">
-                      <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-ink">
-                        {year.year}
-                        {year.year === '2025' && (
-                          <span className="rounded bg-brand-50 px-1 py-0.5 text-[7px] font-extrabold uppercase tracking-[0.06em] text-brand-700">
-                            latest
-                          </span>
-                        )}
-                      </span>
-                    </td>
-                    <td className="tabular py-2.5 pr-3 text-[10.5px] font-semibold text-ink-soft">
-                      {formatNumber(year.registrations)}
-                    </td>
-                    <td className="tabular py-2.5 pr-3 text-[10.5px] font-semibold text-ink-mute">
-                      {formatNumber(year.closures)}
-                    </td>
-                    <td className="tabular py-2.5 pr-3 text-[10.5px] font-bold text-ink">
-                      +{formatNumber(year.net)}
-                    </td>
-                    <td className="py-2.5 pr-3">
-                      <span
+                {annual.map((row, index) => {
+                  const previous = annual[index - 1]
+                  const change =
+                    previous && previous.applications
+                      ? ((row.applications - previous.applications) / previous.applications) * 100
+                      : null
+                  return (
+                    <tr key={row.year} className="border-t border-line/50 text-[11px]">
+                      <td className="px-3 py-2.5 font-bold text-ink">{row.year}</td>
+                      <td className="tabular px-3 py-2.5 text-right font-semibold text-ink-soft">
+                        {formatNumber(row.applications)}
+                      </td>
+                      <td
                         className={cn(
-                          'inline-flex items-center gap-0.5 rounded-md border px-1.5 py-0.5 text-[9.5px] font-bold',
-                          year.growth < 0
-                            ? 'border-coral-200/60 bg-coral-50 text-coral-700'
-                            : 'border-jade-200/60 bg-jade-50 text-jade-700',
+                          'tabular px-3 py-2.5 text-right font-bold',
+                          change === null ? 'text-ink-faint' : change >= 0 ? 'text-jade-700' : 'text-coral-600',
                         )}
                       >
-                        {year.growth >= 0 ? (
-                          <ArrowUpRight className="h-2.5 w-2.5" />
-                        ) : (
-                          <ArrowDownRight className="h-2.5 w-2.5" />
-                        )}
-                        {signed(year.growth)}
-                      </span>
-                    </td>
-                    <td className="tabular py-2.5 pr-3 text-[10.5px] font-semibold text-ink-mute">
-                      {year.closureRatio.toFixed(1)}%
-                    </td>
-                  </tr>
-                ))}
+                        {change === null ? '—' : signedPct(change)}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
+            {!annual.length && <EmptyBlock className="m-3" title="No annual totals" />}
           </div>
-          <p className="mt-2.5 flex items-center gap-1.5 border-t border-line/60 pt-2.5 text-[9px] font-medium text-ink-faint">
-            <Info className="h-3 w-3" />
-            Historical values are illustrative. Closures are modelled estimates, not registry-confirmed exits.
-          </p>
-        </GlassPanel>
-
-        <GlassPanel className="relative overflow-hidden p-5">
-          <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-gold-500/[0.06] blur-2xl" />
-          <PanelHeader
-            eyebrow="Reading the series"
-            title="Milestones & interpretation"
-            description="Three turning points that shaped today’s market."
-            icon={Sparkles}
-          />
-          <div className="relative mt-4">
-            <div className="absolute bottom-2 left-[7px] top-2 w-px bg-gradient-to-b from-brand-300 via-line to-sea-300" />
-            <div className="space-y-4">
-              {milestoneNotes.map((milestone, index) => (
-                <div key={milestone.year} className="relative flex gap-3 pl-0.5">
-                  <span
-                    className={cn(
-                      'relative z-10 mt-1 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border-2 border-white',
-                      index === 0 ? 'bg-coral-500' : index === 1 ? 'bg-jade-500' : 'bg-brand-600',
-                    )}
-                    style={{ boxShadow: '0 0 0 1px rgba(27,31,47,0.08)' }}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="tabular text-[10.5px] font-extrabold text-brand-800">{milestone.year}</span>
-                      <span className="text-[10.5px] font-bold text-ink">{milestone.label}</span>
-                    </div>
-                    <p className="mt-0.5 text-[9.5px] leading-relaxed text-ink-mute">{milestone.detail}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="mt-4 rounded-2xl border border-brand-100/70 bg-[linear-gradient(150deg,rgba(244,243,253,0.9),rgba(255,255,255,0.6))] p-3.5">
-            <p className="serif-accent text-[17px] leading-snug text-brand-900">
-              “The market is not just growing — it is rotating toward experience, health, and specialised services.”
+          <div className="mt-3 rounded-xl border border-gold-100 bg-gold-50/60 p-3">
+            <p className="flex items-center gap-1.5 text-[9.5px] font-bold text-gold-800">
+              <Info className="h-3 w-3" />
+              Interpretation boundary
             </p>
-            <p className="mt-2 text-[9px] font-semibold uppercase tracking-[0.1em] text-ink-faint">
-              MarketMinds trend interpretation · illustrative
+            <p className="mt-1 text-[9px] leading-relaxed text-gold-800/80">
+              A licence application is not a confirmed opening, and GHMC data is aggregated by circle. Use it as
+              historical context, not as proof of current demand or category momentum.
             </p>
           </div>
           <button
@@ -629,13 +563,17 @@ export function MarketTrends() {
             onClick={() => navigate('/market-assistant')}
             className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-line/70 bg-white/50 py-2 text-[10.5px] font-bold text-brand-700 transition-colors hover:bg-white"
           >
-            <Plus className="h-3 w-3" />
-            Build a category-specific brief
+            Discuss this series with the assistant
           </button>
         </GlassPanel>
       </div>
 
-      <Toast message={toast} onClose={closeToast} />
+      <div className="grid gap-2 px-1 md:grid-cols-3">
+        {(ghmc?.data_notes ?? []).slice(0, 3).map((note) => (
+          <SourceNote key={note}>{note}</SourceNote>
+        ))}
+        {google && <SourceNote>{google.note}</SourceNote>}
+      </div>
     </div>
   )
 }

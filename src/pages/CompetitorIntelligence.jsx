@@ -1,17 +1,14 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ArrowRight,
   ArrowUpDown,
   ChevronDown,
   ChevronUp,
-  Download,
-  Flame,
+  Copy,
   Info,
   MapPin,
   Search,
   ShieldAlert,
-  Star,
   Store,
   UsersRound,
 } from 'lucide-react'
@@ -30,44 +27,30 @@ import { GlassPanel } from '../components/ui/GlassPanel'
 import { PanelHeader } from '../components/ui/PanelHeader'
 import { Select } from '../components/ui/Select'
 import { MetricCard } from '../components/ui/MetricCard'
-import { CategoryGlyph, tintHex } from '../components/ui/CategoryGlyph'
 import { Badge } from '../components/ui/Badge'
 import { Meter } from '../components/ui/Meter'
 import { Toast } from '../components/ui/Toast'
+import { CategoryGlyph, tintHex } from '../components/ui/CategoryGlyph'
 import { ChartTooltip } from '../components/charts/ChartTooltip'
+import { EmptyBlock, ErrorBlock, LoadingBlock, SourceNote } from '../components/domain/DataState'
 import { useMarket } from '../context/MarketContext'
-import { categories } from '../data/categories'
-import { localities } from '../data/localities'
-import {
-  getCompetitors,
-  getLocalityCategoryBreakdown,
-  getMarketSnapshot,
-} from '../lib/analytics'
+import { useApiResource } from '../hooks/useApiResource'
+import { marketApi } from '../lib/api'
+import { cn, formatNumber } from '../lib/utils'
 
-import { cn, formatCompactINR, formatNumber, signed } from '../lib/utils'
-
-
-
-const positioningTone = {
-  Premium: 'brand',
-  'Mid-market': 'sea',
-  Value: 'neutral',
-} 
-
-function ConcentrationGauge({
-  hhi,
-  concentration,
+function hhiLabel(value) {
+  if (value === null || value === undefined) return { label: 'Unavailable', tone: 'neutral', color: '#9AA0B1' }
+  if (value < 1500) return { label: 'Fragmented mix', tone: 'jade', color: '#1D9B6A' }
+  if (value < 2500) return { label: 'Moderate mix', tone: 'gold', color: '#D0922B' }
+  return { label: 'Concentrated mix', tone: 'coral', color: '#DC6A5F' }
 }
 
-
-) {
-  const normalized = Math.min(100, Math.max(0, Math.round(((hhi - 300) / 1500) * 100)))
-  const color =
-    concentration === 'Fragmented' ? '#1D9B6A' : concentration === 'Moderately concentrated' ? '#D0922B' : '#DC6A5F'
+function ConcentrationGauge({ hhi }) {
+  const meta = hhiLabel(hhi)
+  const normalized = Math.min(100, Math.max(0, ((hhi ?? 0) / 10000) * 100))
   const radius = 46
   const circumference = 2 * Math.PI * radius
   const arc = circumference * 0.75
-
   return (
     <div className="relative mx-auto h-[152px] w-[172px]">
       <svg viewBox="0 0 120 120" className="h-full w-full" aria-hidden="true">
@@ -87,7 +70,7 @@ function ConcentrationGauge({
           cy="60"
           r={radius}
           fill="none"
-          stroke={color}
+          stroke={meta.color}
           strokeWidth="9"
           strokeLinecap="round"
           strokeDasharray={`${arc * (normalized / 100)} ${circumference}`}
@@ -99,23 +82,23 @@ function ConcentrationGauge({
           y="58"
           textAnchor="middle"
           fill="#1B1F2F"
-          fontSize="24"
+          fontSize="22"
           fontWeight="800"
           style={{ fontFamily: 'Manrope Variable, sans-serif', letterSpacing: '-0.04em' }}
         >
-          {hhi}
+          {hhi ?? '—'}
         </text>
-        <text x="60" y="71" textAnchor="middle" fill="#9AA0B1" fontSize="6.5" fontWeight="700" letterSpacing="0.1em">
-          HHI INDEX
+        <text x="60" y="71" textAnchor="middle" fill="#9AA0B1" fontSize="6" fontWeight="700" letterSpacing="0.08em">
+          CATEGORY-MIX HHI
         </text>
       </svg>
       <div className="absolute inset-x-0 bottom-2 text-center">
         <span
           className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold"
-          style={{ backgroundColor: `${color}14`, borderColor: `${color}30`, color }}
+          style={{ backgroundColor: `${meta.color}14`, borderColor: `${meta.color}30`, color: meta.color }}
         >
-          <span className="h-1 w-1 rounded-full" style={{ backgroundColor: color }} />
-          {concentration}
+          <span className="h-1 w-1 rounded-full" style={{ backgroundColor: meta.color }} />
+          {meta.label}
         </span>
       </div>
     </div>
@@ -125,12 +108,24 @@ function ConcentrationGauge({
 export function CompetitorIntelligence() {
   const navigate = useNavigate()
   const {
-    category,
+    categories,
+    localities,
     categoryId,
-    locality,
     localityId,
+    category,
+    locality,
     setCategoryId,
     setLocalityId,
+    radius,
+    setRadius,
+    radiusOptions,
+    dataReady,
+    metaLoading,
+    metaError,
+    reloadMeta,
+    business,
+    isBusinessMode,
+    clearBusiness,
   } = useMarket()
   const [search, setSearch] = useState('')
   const [sortKey, setSortKey] = useState('distance')
@@ -138,43 +133,91 @@ export function CompetitorIntelligence() {
   const [toast, setToast] = useState(null)
   const closeToast = useCallback(() => setToast(null), [])
 
-  const snapshot = useMemo(() => getMarketSnapshot(categoryId, localityId), [categoryId, localityId])
-  const competitorSet = useMemo(() => getCompetitors(categoryId, localityId), [categoryId, localityId])
-  const breakdown = useMemo(() => getLocalityCategoryBreakdown(localityId).slice(0, 8), [localityId])
+  const competitorResult = useApiResource(
+    ({ signal }) =>
+      isBusinessMode
+        ? marketApi.getBusinessCompetitors(
+            { osm_id: business.osm_id, category: categoryId, radius_m: radius, limit: 100 },
+            { signal },
+          )
+        : marketApi.getCompetitors(
+            { locality: localityId, category: categoryId, radius_m: radius, limit: 100 },
+            { signal },
+          ),
+    [isBusinessMode, business?.osm_id, localityId, categoryId, radius],
+    { enabled: dataReady },
+  )
 
-  const topShare = competitorSet.records
-    .slice()
-    .sort((a, b) => b.share - a.share)
-    .slice(0, 3)
-  const topShareTotal = topShare.reduce((sum, record) => sum + record.share, 0)
+  const snapshotResult = useApiResource(
+    ({ signal }) =>
+      isBusinessMode
+        ? marketApi.getBusinessContext(
+            { osm_id: business.osm_id, category: categoryId, radius_m: radius },
+            { signal },
+          )
+        : marketApi.getLocalityAnalysis(
+            { locality: localityId, category: categoryId, radius_m: radius },
+            { signal },
+          ),
+    [isBusinessMode, business?.osm_id, localityId, categoryId, radius],
+    { enabled: dataReady },
+  )
 
-  const intensityMarkets = useMemo(() => {
-    const ranked = localities
-      .map((item) => ({
-        locality: item,
-        snapshot: getMarketSnapshot(categoryId, item.id),
-      }))
-      .sort((a, b) => b.snapshot.competition - a.snapshot.competition)
-      .slice(0, 8)
-    if (!ranked.some((item) => item.locality.id === localityId)) {
-      ranked[ranked.length - 1] = {
-        locality,
-        snapshot,
-      }
-    }
-    return ranked
-  }, [categoryId, localityId, locality, snapshot])
+  const pressureResult = useApiResource(
+    ({ signal }) =>
+      marketApi.getAllLocalityAnalysis({ category: categoryId, radius_m: radius }, { signal }),
+    [categoryId, radius],
+    { enabled: dataReady },
+  )
+
+  const data = competitorResult.data
+  const snapshot = snapshotResult.data
+  const records = useMemo(() => data?.competitors ?? [], [data])
+  const hhi = data?.category_mix_hhi
+  const hhiMeta = hhiLabel(hhi)
+  const catchment = data?.catchment
 
   const filteredRecords = useMemo(() => {
     const term = search.trim().toLowerCase()
-    return competitorSet.records
-      .filter((record) => !term || `${record.name} ${record.positioning}`.toLowerCase().includes(term))
+    return records
+      .filter((record) => {
+        if (!term) return true
+        return [record.display_name, record.name, record.subtype, record.osm_value]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(term))
+      })
       .slice()
       .sort((a, b) => {
         const modifier = sortDirection === 'asc' ? 1 : -1
-        return (a[sortKey] - b[sortKey]) * modifier
+        if (sortKey === 'name') {
+          return (a.display_name || '').localeCompare(b.display_name || '') * modifier
+        }
+        return ((a.distance_m ?? Infinity) - (b.distance_m ?? Infinity)) * modifier
       })
-  }, [competitorSet.records, search, sortKey, sortDirection])
+  }, [records, search, sortKey, sortDirection])
+
+  const mixData = useMemo(
+    () =>
+      (data?.category_mix ?? []).map((item) => ({
+        id: item.category_id,
+        name: item.category_name,
+        count: item.mapped_poi_count,
+        share: item.share_pct,
+      })),
+    [data],
+  )
+
+  const pressureRows = useMemo(
+    () =>
+      (pressureResult.data?.localities ?? [])
+        .map((item) => ({ ...item.locality, snapshot: item }))
+        .sort(
+          (a, b) =>
+            (b.snapshot.scores.competition_index ?? -1) - (a.snapshot.scores.competition_index ?? -1),
+        )
+        .slice(0, 8),
+    [pressureResult.data],
+  )
 
   const setSort = (key) => {
     if (sortKey === key) {
@@ -186,32 +229,24 @@ export function CompetitorIntelligence() {
   }
 
   const copyRecords = async () => {
-    const header = 'Business,Distance (km),Rating,Reviews,Established,Positioning,Est. share %'
-    const rows = competitorSet.records.map((record) =>
+    const header = 'Name,OSM ID,Category,Subtype,Distance m,Inside GHMC'
+    const rows = records.map((record) =>
       [
-        record.name,
-        record.distance,
-        record.rating,
-        record.reviews,
-        record.established,
-        record.positioning,
-        record.share,
+        `"${(record.display_name || '').replaceAll('"', '""')}"`,
+        record.osm_id,
+        `"${record.subtype ?? ''}"`,
+        record.osm_value ?? '',
+        record.distance_m,
+        record.inside_ghmc ? 'yes' : 'no',
       ].join(','),
     )
     try {
       await navigator.clipboard.writeText([header, ...rows].join('\n'))
-      setToast('Sample competitor table copied as CSV')
+      setToast(`Copied ${records.length} mapped competitor rows`)
     } catch {
-      setToast('Clipboard unavailable — sample data is illustrative only')
+      setToast('Clipboard unavailable in this browser')
     }
   }
-
-  const chartData = breakdown.map((item) => ({
-    name: item.category.shortName,
-    count: item.count,
-    id: item.category.id,
-    tint: item.category.tint,
-  }))
 
   const sortIcon = (key) => {
     if (sortKey !== key) return <ArrowUpDown className="h-3 w-3 text-ink-faint" />
@@ -222,22 +257,49 @@ export function CompetitorIntelligence() {
     )
   }
 
+  if (metaLoading || competitorResult.loading || snapshotResult.loading) {
+    return (
+      <div className="space-y-5">
+        <PageHeader eyebrow="Competitive landscape" title="Competitor intelligence" location={locality?.name} />
+        <LoadingBlock label="Loading mapped competitor rows and category context…" />
+      </div>
+    )
+  }
+
+  const error = metaError || competitorResult.error || snapshotResult.error
+  if (error) {
+    return (
+      <div className="space-y-5">
+        <PageHeader eyebrow="Competitive landscape" title="Competitor intelligence" location={locality?.name} />
+        <ErrorBlock
+          error={error}
+          onRetry={() => {
+            if (metaError) reloadMeta()
+            else if (competitorResult.error) competitorResult.reload()
+            else snapshotResult.reload()
+          }}
+        />
+      </div>
+    )
+  }
+
+  const density = catchment?.area_km2
+    ? Math.round((data.competitor_count / catchment.area_km2) * 100) / 100
+    : null
+  const categoryShare = mixData.find((item) => item.id === categoryId)?.share
+
   return (
     <div className="space-y-5">
       <PageHeader
         eyebrow="Competitive landscape"
-        title="Know the field before you enter it"
-        description="Map nearby competitors, understand category concentration, and find the positioning lane that is still open."
-        location={`${locality.name} · ${category.shortName}`}
+        title="Competitor intelligence"
+        description="Explore mapped outlets in the selected category and catchment. Ratings, sales, revenue, market share, and closure status are not available and are not estimated."
+        location={`${isBusinessMode ? business.name : locality.name} · ${category.name}`}
         actions={
           <>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => navigate('/market-explorer')}
-            >
+            <button type="button" className="btn-secondary" onClick={() => navigate('/market-explorer')}>
               <MapPin className="h-4 w-4" />
-              Open on map
+              Explore localities
             </button>
             <button type="button" className="btn-primary" onClick={() => navigate('/risk-analysis')}>
               <ShieldAlert className="h-4 w-4" />
@@ -252,13 +314,15 @@ export function CompetitorIntelligence() {
           <CategoryGlyph icon={category.icon} tint={category.tint} size="md" clay />
           <div className="leading-tight">
             <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-ink-faint">Analysis scope</p>
-            <p className="text-[11.5px] font-extrabold text-ink">{category.name}</p>
+            <p className="text-[11.5px] font-extrabold text-ink">
+              {isBusinessMode ? 'Exact business coordinate' : 'Locality reference point'}
+            </p>
           </div>
         </div>
         <div className="h-7 w-px bg-line/80" />
         <div className="min-w-[170px] flex-1 sm:max-w-[220px]">
           <Select
-            value={categoryId}
+            value={categoryId ?? undefined}
             onChange={setCategoryId}
             size="sm"
             searchable
@@ -267,14 +331,14 @@ export function CompetitorIntelligence() {
             options={categories.map((item) => ({
               value: item.id,
               label: item.name,
-              hint: `${formatNumber(item.businesses)} businesses · ${signed(item.growth)}`,
+              hint: `${formatNumber(item.mapped_poi_count ?? 0)} mapped POIs`,
               icon: <CategoryGlyph icon={item.icon} tint={item.tint} size="sm" />,
             }))}
           />
         </div>
         <div className="min-w-[160px] flex-1 sm:max-w-[220px]">
           <Select
-            value={localityId}
+            value={localityId ?? undefined}
             onChange={setLocalityId}
             size="sm"
             searchable
@@ -283,55 +347,82 @@ export function CompetitorIntelligence() {
             options={localities.map((item) => ({
               value: item.id,
               label: item.name,
-              hint: `${item.zone} · ${formatNumber(item.businesses)} businesses`,
+              hint: `${item.zone}${item.circle_name ? ` · ${item.circle_name}` : ''}`,
               icon: <MapPin className="h-3.5 w-3.5 text-brand-500" />,
             }))}
           />
         </div>
-        <div className="ml-auto flex flex-wrap items-center gap-3 text-[9.5px] font-semibold text-ink-mute">
-          <span>
-            Category growth <span className="text-jade-700">{signed(category.growth)}</span>
-          </span>
-          <span className="h-4 w-px bg-line" />
-          <span>
-            Rent index <span className="text-ink">₹{locality.rentIndex}/sq ft</span>
-          </span>
-          <span className="h-4 w-px bg-line" />
-          <span className="flex items-center gap-1 text-gold-700">
+        <div className="min-w-[130px]">
+          <Select
+            value={String(radius)}
+            onChange={(value) => setRadius(Number(value))}
+            size="sm"
+            ariaLabel="Competitor radius"
+            options={radiusOptions.map((value) => ({
+              value: String(value),
+              label: `${value / 1000} km radius`,
+            }))}
+          />
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-2 text-[9.5px] font-semibold text-ink-mute">
+          {isBusinessMode && (
+            <button
+              type="button"
+              onClick={clearBusiness}
+              className="inline-flex items-center gap-1 rounded-full border border-brand-200/70 bg-brand-50 px-2 py-1 text-brand-800"
+              title={`Business coordinate: ${business.latitude}, ${business.longitude}`}
+            >
+              <Store className="h-3 w-3" />
+              {business.name}
+              <span className="text-brand-500">×</span>
+            </button>
+          )}
+          <span className="inline-flex items-center gap-1 text-gold-700">
             <span className="h-1.5 w-1.5 rounded-full bg-gold-500" />
-            Illustrative dataset
+            Mapped OSM data
           </span>
         </div>
       </GlassPanel>
 
+      {isBusinessMode && (
+        <div className="rounded-xl border border-brand-100/70 bg-brand-50/40 px-3.5 py-2.5 text-[10.5px] leading-relaxed text-brand-900/80">
+          Analysis centre is the mapped coordinate for <strong>{business.name}</strong>. The selected business is
+          excluded from the competitor count. Nearest locality:{' '}
+          <strong>{business.nearest_locality_name}</strong>
+          {business.nearest_locality_distance_m !== null
+            ? ` (${Math.round(business.nearest_locality_distance_m)} m away)`
+            : ''}.
+        </div>
+      )}
+
       <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          label="Nearby competitors"
-          value={formatNumber(snapshot.nearby)}
+          label={isBusinessMode ? 'Other nearby outlets' : 'Nearby competitors'}
+          value={formatNumber(data?.competitor_count ?? 0)}
           icon={UsersRound}
           tone="coral"
-          footnote={`Within an estimated 2 km radius`}
+          footnote={`${radius / 1000} km mapped-category count`}
         />
         <MetricCard
           label="Category density"
-          value={`${snapshot.density}/km²`}
+          value={density !== null ? `${density}/km²` : '—'}
           icon={MapPin}
           tone="gold"
-          footnote="Trade-area density, category-adjusted"
+          footnote={`Circular area ${formatNumber(catchment?.area_km2 ?? 0)} km²`}
         />
         <MetricCard
-          label="Locality outlets"
-          value={formatNumber(snapshot.presence)}
+          label="Category share of mapped"
+          value={categoryShare !== undefined ? `${categoryShare}%` : '—'}
           icon={Store}
           tone="brand"
-          footnote={`${category.shortName} · ${locality.name}`}
+          footnote="Selected category among all mapped POIs in catchment"
         />
         <MetricCard
-          label="Competition intensity"
-          value={`${snapshot.competition}/100`}
-          icon={Flame}
+          label="Competition index"
+          value={snapshot?.scores?.competition_index ?? '—'}
+          icon={ShieldAlert}
           tone="sea"
-          footnote={`Opportunity signal ${snapshot.opportunity}/100`}
+          footnote="Relative to the highest locality count at this radius"
         />
       </div>
 
@@ -339,19 +430,23 @@ export function CompetitorIntelligence() {
         <GlassPanel className="p-5">
           <PanelHeader
             eyebrow="Distribution"
-            title="Locality category mix"
-            description={`All tracked business categories in ${locality.name}, ranked by outlet count.`}
+            title="Catchment category mix"
+            description={`All mapped POI categories inside the ${radius / 1000} km catchment, ranked by count.`}
             icon={Store}
             action={
-              <div className="hidden items-center gap-1.5 rounded-full border border-line/70 bg-white/60 px-2 py-1 text-[9px] font-bold text-ink-mute sm:flex">
-                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: tintHex[category.tint] }} />
-                {category.shortName} highlighted
-              </div>
+              <span className="chip">
+                {formatNumber(snapshot?.all_mapped_poi_count_in_catchment ?? 0)} mapped POIs
+              </span>
             }
           />
           <div className="mt-4 h-[286px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 26, bottom: 0, left: 6 }} barSize={13}>
+              <BarChart
+                data={mixData}
+                layout="vertical"
+                margin={{ top: 0, right: 26, bottom: 0, left: 6 }}
+                barSize={13}
+              >
                 <CartesianGrid strokeDasharray="3 5" stroke="#EAE3D7" horizontal={false} />
                 <XAxis
                   type="number"
@@ -365,93 +460,75 @@ export function CompetitorIntelligence() {
                   dataKey="name"
                   axisLine={false}
                   tickLine={false}
-                  width={98}
+                  width={112}
                   tick={{ fontSize: 10.5, fill: '#454C61', fontWeight: 600 }}
                 />
-                <Tooltip content={<ChartTooltip formatter={(value) => `${formatNumber(value)} outlets`} />} />
-                <Bar dataKey="count" name="Outlets" radius={[0, 5, 5, 0]}>
-                  {chartData.map((entry) => (
-                    <Cell
-                      key={entry.id}
-                      fill={tintHex[entry.tint]}
-                      fillOpacity={entry.id === categoryId ? 0.95 : 0.32}
-                    />
-                  ))}
+                <Tooltip
+                  content={
+                    <ChartTooltip effect="dot" />
+                  }
+                />
+                <Bar dataKey="count" name="Mapped POIs" radius={[0, 5, 5, 0]}>
+                  {mixData.map((entry) => {
+                    const categoryMeta = categories.find((item) => item.id === entry.id)
+                    return (
+                      <Cell
+                        key={entry.id}
+                        fill={tintHex[categoryMeta?.tint] ?? '#4946B4'}
+                        fillOpacity={entry.id === categoryId ? 0.95 : 0.3}
+                      />
+                    )
+                  })}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-line/60 pt-3">
             <p className="text-[10px] font-medium text-ink-mute">
-              <span className="font-bold text-ink">{category.name}</span> accounts for an estimated{" "}
-              <span className="font-bold text-ink">{formatNumber(snapshot.presence)}</span> of{" "}
-              {formatNumber(locality.businesses)} tracked businesses here.
+              <span className="font-bold text-ink">{category.name}</span> accounts for{' '}
+              <span className="font-bold text-ink">{categoryShare ?? '—'}%</span> of{' '}
+              {formatNumber(snapshot?.all_mapped_poi_count_in_catchment ?? 0)} mapped POIs in this catchment.
             </p>
-            <span className="chip">Estimated · illustrative</span>
+            <SourceNote>Counts overlap across localities and are not additive.</SourceNote>
           </div>
         </GlassPanel>
 
         <GlassPanel className="flex flex-col p-5">
           <PanelHeader
             eyebrow="Concentration"
-            title="Market concentration"
-            description="How power is distributed among established players."
-            icon={Flame}
+            title="Category-mix concentration"
+            description="HHI across mapped POI categories, not revenue or market share."
+            icon={Info}
           />
           <div className="mt-2">
-            <ConcentrationGauge hhi={competitorSet.hhi} concentration={competitorSet.concentration} />
+            <ConcentrationGauge hhi={hhi} />
           </div>
-          <div className="mt-1">
-            <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-ink/[0.05]">
-              {topShare.map((record, index) => (
-                <div
-                  key={record.id}
-                  className="h-full border-r border-white/60"
-                  style={{
-                    width: `${record.share}%`,
-                    backgroundColor: ['#3B3795', '#5A57D4', '#8B88E8'][index],
-                  }}
+          <div className="mt-1 space-y-1.5">
+            {mixData.slice(0, 4).map((item) => (
+              <div key={item.id} className="flex items-center gap-2">
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: tintHex[categories.find((entry) => entry.id === item.id)?.tint] ?? '#9AA0B1' }}
                 />
-              ))}
-              <div
-                className="h-full bg-[#D9D2C4]"
-                style={{ width: `${Math.max(0, 100 - topShareTotal)}%` }}
-              />
-            </div>
-            <div className="mt-2.5 space-y-1.5">
-              {topShare.map((record, index) => (
-                <div key={record.id} className="flex items-center gap-2">
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: ['#3B3795', '#5A57D4', '#8B88E8'][index] }}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-[10.5px] font-semibold text-ink-soft">
-                    {record.name}
-                  </span>
-                  <span className="tabular text-[10px] font-bold text-ink">{record.share}%</span>
-                </div>
-              ))}
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 shrink-0 rounded-full bg-[#D9D2C4]" />
-                <span className="min-w-0 flex-1 truncate text-[10.5px] font-semibold text-ink-mute">
-                  Long tail of independent operators
+                <span className="min-w-0 flex-1 truncate text-[10.5px] font-semibold text-ink-soft">
+                  {item.name}
                 </span>
-                <span className="tabular text-[10px] font-bold text-ink-soft">
-                  {Math.max(0, 100 - topShareTotal).toFixed(1)}%
-                </span>
+                <span className="tabular text-[10px] font-bold text-ink">{item.share}%</span>
               </div>
-            </div>
+            ))}
           </div>
           <p className="mt-3 rounded-xl border border-line/60 bg-white/40 p-2.5 text-[9.5px] leading-relaxed text-ink-mute">
-            {competitorSet.concentration === 'Fragmented'
-              ? 'No single operator dominates. Share is winnable with a sharper proposition, but loyalty will be low.'
-              : competitorSet.concentration === 'Moderately concentrated'
-                ? 'A handful of players hold meaningful share. Differentiate clearly and avoid competing on price alone.'
-                : 'Established operators control a large share. Entry requires a materially differentiated offer or a niche audience.'}
+            {hhi === null || hhi === undefined
+              ? 'Not enough mapped category data to compute HHI.'
+              : hhiMeta.label === 'Fragmented mix'
+                ? 'Mapped supply is spread across categories. This does not mean demand is unmet or that a new outlet will succeed.'
+                : hhiMeta.label === 'Moderate mix'
+                  ? 'A few categories make up a larger share of mapped supply. Use the competitor table for category-level detail.'
+                  : 'One or more categories dominate mapped supply. HHI is a composition indicator, not a market-power measure.'}
           </p>
           <div className="mt-auto flex items-center justify-between border-t border-line/60 pt-3 text-[9.5px] font-medium text-ink-faint">
-            <span>Estimated HHI · sample share model</span>
-            <span className="font-bold text-ink-mute">{competitorSet.concentration}</span>
+            <span>HHI range 0–10,000</span>
+            <span className="font-bold text-ink-mute">{hhiMeta.label}</span>
           </div>
         </GlassPanel>
       </div>
@@ -460,22 +537,20 @@ export function CompetitorIntelligence() {
         <GlassPanel className="p-5">
           <PanelHeader
             eyebrow="Intensity"
-            title="Nearby market pressure"
-            description="Category-adjusted competition across leading localities."
-            icon={Flame}
+            title="Locality pressure"
+            description="Competition index for the same category and radius."
+            icon={ShieldAlert}
           />
           <div className="mt-3.5 grid grid-cols-2 gap-2">
-            {intensityMarkets.map(({ locality: market, snapshot: marketSnapshot }) => {
-              const isSelected = market.id === localityId
-              const level =
-                marketSnapshot.competition >= 70 ? 'Crowded' : marketSnapshot.competition >= 50 ? 'Competitive' : 'Open'
-              const color =
-                marketSnapshot.competition >= 70 ? '#DC6A5F' : marketSnapshot.competition >= 50 ? '#D0922B' : '#1D9B6A'
+            {pressureRows.map((row) => {
+              const isSelected = row.id === (isBusinessMode ? business.nearest_locality_id : localityId)
+              const score = row.snapshot.scores.competition_index
+              const color = score === null ? '#9AA0B1' : score >= 70 ? '#DC6A5F' : score >= 45 ? '#D0922B' : '#1D9B6A'
               return (
                 <button
-                  key={market.id}
+                  key={row.id}
                   type="button"
-                  onClick={() => setLocalityId(market.id)}
+                  onClick={() => setLocalityId(row.id)}
                   className={cn(
                     'group rounded-xl border p-2.5 text-left transition-all duration-200',
                     isSelected
@@ -484,45 +559,55 @@ export function CompetitorIntelligence() {
                   )}
                 >
                   <div className="flex items-start justify-between gap-1">
-                    <p className="truncate text-[10.5px] font-bold text-ink">{market.name}</p>
+                    <p className="truncate text-[10.5px] font-bold text-ink">{row.name}</p>
                     {isSelected && (
                       <span className="rounded bg-brand-600 px-1 py-0.5 text-[7px] font-extrabold uppercase tracking-[0.06em] text-white">
-                        you
+                        near
                       </span>
                     )}
                   </div>
                   <div className="mt-1 flex items-baseline gap-1">
                     <span className="tabular text-[17px] font-extrabold leading-none" style={{ color }}>
-                      {marketSnapshot.competition}
+                      {score ?? '—'}
                     </span>
                     <span className="text-[8.5px] font-semibold text-ink-faint">/100</span>
                   </div>
-                  <Meter value={marketSnapshot.competition} tone="coral" height="xs" className="mt-1.5" />
+                  <Meter value={score ?? 0} tone="coral" height="xs" className="mt-1.5" />
                   <div className="mt-1 flex items-center justify-between text-[8px] font-bold">
-                    <span style={{ color }}>{level}</span>
-                    <span className="text-ink-faint">{marketSnapshot.nearby} nearby</span>
+                    <span style={{ color }}>
+                      {score === null ? 'Unavailable' : score >= 70 ? 'Crowded' : score >= 45 ? 'Competitive' : 'Lighter'}
+                    </span>
+                    <span className="text-ink-faint">{formatNumber(row.snapshot.mapped_poi_count)} mapped</span>
                   </div>
                 </button>
               )
             })}
           </div>
+          {!pressureRows.length && (
+            <EmptyBlock className="mt-3" title="No locality pressure data" description="Try another category." />
+          )}
           <div className="mt-3 flex items-center gap-2 rounded-xl border border-line/60 bg-white/40 p-2.5">
             <Info className="h-3.5 w-3.5 shrink-0 text-brand-600" />
             <p className="text-[9px] leading-relaxed text-ink-mute">
-              Values are category-adjusted estimates. Select any tile to update the full page.
+              The competition index is relative to the highest count at this radius. It is not a saturation or
+              demand forecast.
             </p>
           </div>
         </GlassPanel>
 
         <GlassPanel className="flex flex-col p-5">
           <PanelHeader
-            eyebrow="Sample comparison"
-            title="Competitor comparison"
-            description="A fictional sample of nearby operators for format benchmarking."
+            eyebrow="Mapped records"
+            title="Nearby competitor list"
+            description={
+              isBusinessMode
+                ? 'Mapped outlets in this category within the selected radius, excluding the selected business.'
+                : 'Mapped outlets in this category within the selected radius.'
+            }
             icon={UsersRound}
             action={
               <button type="button" onClick={copyRecords} className="btn-secondary h-8 px-2.5 text-[10.5px]">
-                <Download className="h-3 w-3" />
+                <Copy className="h-3 w-3" />
                 Copy CSV
               </button>
             }
@@ -534,29 +619,41 @@ export function CompetitorIntelligence() {
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search sample businesses…"
+                placeholder="Filter mapped outlets…"
                 className="field h-8 rounded-lg pl-8 text-[11.5px]"
               />
             </div>
             <span className="text-[9.5px] font-semibold text-ink-faint">
-              {filteredRecords.length} of {competitorSet.records.length} records
+              {filteredRecords.length} of {records.length} returned
             </span>
           </div>
 
           <div className="mt-2.5 flex items-start gap-2 rounded-lg border border-gold-100 bg-gold-50/60 px-2.5 py-2">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold-700" />
             <p className="text-[9px] leading-relaxed text-gold-700">
-              Illustrative sample records. Business names are fictional and are not presented as verified real
-              businesses.
+              {formatNumber(data?.unnamed_competitor_count ?? 0)} unnamed mapped outlets
+              {data?.unnamed_competitor_share_pct !== null && data?.unnamed_competitor_share_pct !== undefined
+                ? ` (${data.unnamed_competitor_share_pct}% of rows)`
+                : ''}
+              . Missing names are shown explicitly; no ratings or sales are inferred.
             </p>
           </div>
 
-          <div className="mt-2.5 flex-1 overflow-x-auto scroll-slim">
+          <div className="mt-2.5 flex-1 overflow-auto scroll-slim">
             <table className="w-full min-w-[620px] border-collapse text-left">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-[rgba(249,246,239,0.96)] backdrop-blur">
                 <tr className="border-b border-line/70">
                   <th className="pb-2 pl-1.5 pr-2 text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">
-                    Business
+                    <button
+                      type="button"
+                      onClick={() => setSort('name')}
+                      className="flex items-center gap-1 hover:text-ink"
+                    >
+                      Mapped outlet {sortIcon('name')}
+                    </button>
+                  </th>
+                  <th className="px-2 pb-2 text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">
+                    Type
                   </th>
                   <th className="px-2 pb-2">
                     <button
@@ -567,92 +664,81 @@ export function CompetitorIntelligence() {
                       Distance {sortIcon('distance')}
                     </button>
                   </th>
-                  <th className="px-2 pb-2">
-                    <button
-                      type="button"
-                      onClick={() => setSort('rating')}
-                      className="flex items-center gap-1 text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-faint hover:text-ink"
-                    >
-                      Rating {sortIcon('rating')}
-                    </button>
-                  </th>
                   <th className="px-2 pb-2 text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">
-                    Est.
+                    Ward / scope
                   </th>
-                  <th className="px-2 pb-2 text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">
-                    Positioning
-                  </th>
-                  <th className="px-2 pb-2">
-                    <button
-                      type="button"
-                      onClick={() => setSort('share')}
-                      className="flex items-center gap-1 text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-faint hover:text-ink"
-                    >
-                      Share {sortIcon('share')}
-                    </button>
+                  <th className="px-2 pb-2 text-right text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">
+                    Name data
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {filteredRecords.map((record) => (
                   <tr
-                    key={record.id}
-                    className="group border-b border-line/50 transition-colors last:border-0 hover:bg-white/55"
+                    key={record.osm_id}
+                    className="border-b border-line/50 transition-colors last:border-0 hover:bg-white/55"
                   >
-                    <td className="py-2.5 pl-1.5 pr-2">
-                      <p className="text-[11px] font-bold text-ink">{record.name}</p>
-                      <p className="text-[9px] font-medium text-ink-faint">
-                        {record.reviews.toLocaleString('en-IN')} reviews
+                    <td className="max-w-[230px] py-2.5 pl-1.5 pr-2">
+                      <p className={cn('truncate text-[11px] font-bold', record.name_status === 'named' ? 'text-ink' : 'text-ink-mute italic')}>
+                        {record.display_name}
                       </p>
-                    </td>
-                    <td className="tabular px-2 py-2.5 text-[10.5px] font-semibold text-ink-soft">
-                      {record.distance.toFixed(1)} km
+                      <p className="truncate text-[9px] font-medium text-ink-faint">{record.osm_id}</p>
                     </td>
                     <td className="px-2 py-2.5">
-                      <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-ink">
-                        <Star className="h-3 w-3 fill-gold-400 text-gold-500" style={{ color: '#D0922B' }} />
-                        {record.rating.toFixed(1)}
+                      <span className="text-[10px] font-semibold text-ink-soft">
+                        {record.subtype || record.osm_value || '—'}
                       </span>
                     </td>
-                    <td className="tabular px-2 py-2.5 text-[10.5px] font-semibold text-ink-mute">
-                      {record.established}
+                    <td className="tabular px-2 py-2.5 text-[10.5px] font-semibold text-ink-soft">
+                      {record.distance_m >= 1000
+                        ? `${(record.distance_m / 1000).toFixed(1)} km`
+                        : `${Math.round(record.distance_m)} m`}
                     </td>
-                    <td className="px-2 py-2.5">
-                      <Badge tone={positioningTone[record.positioning]}>{record.positioning}</Badge>
+                    <td className="px-2 py-2.5 text-[10px] font-medium text-ink-mute">
+                      {record.ward_id ?? 'Not assigned'} · {record.inside_ghmc ? 'GHMC' : 'Outside GHMC'}
                     </td>
-                    <td className="px-2 py-2.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="tabular w-8 text-[10px] font-bold text-ink-soft">{record.share}%</span>
-                        <Meter value={record.share * 6} tone="brand" height="xs" className="w-12" />
-                      </div>
+                    <td className="px-2 py-2.5 text-right">
+                      <Badge tone={record.name_status === 'named' ? 'jade' : 'neutral'} className="text-[8.5px]">
+                        {record.name_status === 'named' ? 'Named' : 'Unnamed'}
+                      </Badge>
                     </td>
                   </tr>
                 ))}
-                {filteredRecords.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="py-8 text-center text-[11px] font-medium text-ink-faint">
-                      No sample records match “{search}”.
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
+            {!filteredRecords.length && (
+              <EmptyBlock
+                className="m-3"
+                title={records.length ? 'No rows match this filter' : 'No mapped competitors in this catchment'}
+                description={
+                  records.length
+                    ? 'Clear the filter or choose a different category.'
+                    : 'Try a larger radius or another locality. Absence of mapped outlets is not proof of low competition.'
+                }
+              />
+            )}
           </div>
 
           <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-line/60 pt-2.5">
             <p className="text-[9px] font-medium text-ink-faint">
-              Rent benchmark for this locality: {formatCompactINR(snapshot.rentBenchmark)}/month (1,200 sq ft est.)
+              Straight-line distances from{' '}
+              {data?.analysis_center?.label ?? 'the analysis centre'} · limit {data?.limit ?? 100}
             </p>
             <button
               type="button"
               onClick={() => navigate('/market-assistant')}
               className="inline-flex items-center gap-1 text-[9.5px] font-bold text-brand-700 hover:text-brand-900"
             >
-              Ask about positioning
-              <ArrowRight className="h-3 w-3" />
+              Ask about this landscape
             </button>
           </div>
         </GlassPanel>
+      </div>
+
+      <div className="grid gap-2 px-1 md:grid-cols-3">
+        {(data?.data_notes ?? []).slice(0, 3).map((note) => (
+          <SourceNote key={note}>{note}</SourceNote>
+        ))}
       </div>
 
       <Toast message={toast} onClose={closeToast} />

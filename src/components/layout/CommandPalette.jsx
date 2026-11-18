@@ -1,39 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, CornerDownLeft, MapPin, Search, Shapes } from 'lucide-react'
+import { ArrowRight, CornerDownLeft, MapPin, Search, Shapes, Sparkles } from 'lucide-react'
 import { Modal } from '../ui/Modal'
 import { CategoryGlyph } from '../ui/CategoryGlyph'
 import { allNavItems } from './navigation'
-import { categories } from '../../data/categories'
-import { localities } from '../../data/localities'
 import { useMarket } from '../../context/MarketContext'
-import { formatNumber } from '../../lib/utils'
-import { cn } from '../../lib/utils'
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { cn, formatNumber } from '../../lib/utils'
 
 export function CommandPalette({ open, onClose }) {
   const navigate = useNavigate()
-  const { setCategoryId, setLocalityId } = useMarket()
+  const {
+    categories,
+    localities,
+    setCategoryId,
+    setLocalityId,
+    runSearch,
+  } = useMarket()
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef(null)
 
   useEffect(() => {
-    if (!open) return
+    if (!open) return undefined
     setQuery('')
     setActiveIndex(0)
     const timer = window.setTimeout(() => inputRef.current?.focus(), 80)
@@ -53,6 +41,23 @@ export function CommandPalette({ open, onClose }) {
         action: () => navigate(item.to),
       }))
 
+    const searchItem =
+      term.length >= 2
+        ? [
+            {
+              id: 'natural-search',
+              group: 'Natural-language search',
+              label: `Search “${query.trim()}”`,
+              hint: 'Interpret a category, locality, or mapped business name',
+              icon: <Sparkles className="h-4 w-4" />,
+              action: () => {
+                runSearch(query)
+                navigate('/dashboard')
+              },
+            },
+          ]
+        : []
+
     const localityItems = localities
       .filter((locality) => !term || `${locality.name} ${locality.zone}`.toLowerCase().includes(term))
       .slice(0, term ? 6 : 4)
@@ -60,7 +65,7 @@ export function CommandPalette({ open, onClose }) {
         id: `locality-${locality.id}`,
         group: 'Switch locality',
         label: locality.name,
-        hint: `${locality.zone} · ${formatNumber(locality.businesses)} businesses · ${locality.opportunity}/100 opportunity`,
+        hint: `${locality.zone} · approximate reference point`,
         icon: <MapPin className="h-4 w-4" />,
         action: () => setLocalityId(locality.id),
       }))
@@ -68,20 +73,23 @@ export function CommandPalette({ open, onClose }) {
     const categoryItems = categories
       .filter(
         (category) =>
-          !term || `${category.name} ${category.keywords.join(' ')}`.toLowerCase().includes(term),
+          !term ||
+          `${category.name} ${(category.aliases ?? []).join(' ')}`
+            .toLowerCase()
+            .includes(term),
       )
       .slice(0, term ? 6 : 4)
       .map((category) => ({
         id: `category-${category.id}`,
         group: 'Switch category',
         label: category.name,
-        hint: `${formatNumber(category.businesses)} businesses city-wide · ${category.growth > 0 ? '+' : ''}${category.growth}% YoY`,
+        hint: `${formatNumber(category.mapped_poi_count ?? 0)} mapped POIs citywide`,
         icon: <CategoryGlyph icon={category.icon} tint={category.tint} size="sm" />,
         action: () => setCategoryId(category.id),
       }))
 
-    return [...pageItems, ...localityItems, ...categoryItems]
-  }, [navigate, query, setCategoryId, setLocalityId])
+    return [...searchItem, ...pageItems, ...localityItems, ...categoryItems]
+  }, [categories, localities, navigate, query, runSearch, setCategoryId, setLocalityId])
 
   useEffect(() => {
     setActiveIndex(0)
@@ -121,7 +129,7 @@ export function CommandPalette({ open, onClose }) {
               apply(flattened[activeIndex])
             }
           }}
-          placeholder="Search pages, localities, categories…"
+          placeholder="Search pages, localities, categories, or a business…"
           className="h-7 flex-1 bg-transparent text-[14px] font-medium text-ink outline-none placeholder:text-ink-faint"
         />
         <span className="rounded-md border border-line bg-canvas/60 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-ink-faint">
@@ -134,7 +142,9 @@ export function CommandPalette({ open, onClose }) {
           <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
             <Shapes className="h-7 w-7 text-ink-faint" />
             <p className="text-[12.5px] font-semibold text-ink">No matches for “{query}”</p>
-            <p className="text-[11px] text-ink-faint">Try a locality, category, or workspace page.</p>
+            <p className="text-[11px] text-ink-faint">
+              Try a locality, approved category, workspace page, or mapped business name.
+            </p>
           </div>
         )}
         {Object.entries(groups).map(([group, groupItems]) => (

@@ -1,101 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-
-
 import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
-  ArrowRight,
   ArrowUp,
-  Calculator,
   CheckCircle2,
-  Compass,
   Copy,
-  Download,
-  FileText,
   Info,
+  Loader2,
   MapPin,
+  MessageSquare,
   RotateCcw,
   ShieldAlert,
   Sparkles,
+  Store,
   UsersRound,
-  Wallet,
-  XCircle,
 } from 'lucide-react'
 import { PageHeader } from '../components/ui/PageHeader'
 import { GlassPanel } from '../components/ui/GlassPanel'
 import { PanelHeader } from '../components/ui/PanelHeader'
 import { Select } from '../components/ui/Select'
-import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { CategoryGlyph } from '../components/ui/CategoryGlyph'
 import { Meter } from '../components/ui/Meter'
-import { Toast } from '../components/ui/Toast'
+import { ErrorBlock, LoadingBlock, SourceNote } from '../components/domain/DataState'
 import { useMarket } from '../context/MarketContext'
-import { categories } from '../data/categories'
-import { localities } from '../data/localities'
-import {
-  answerMarketQuestion,
-  buildMarketBrief,
-  calculateRisk,
-  defaultRiskInputs,
-  getMarketSnapshot,
-} from '../lib/analytics'
-
-import { cn, formatCompactINR, formatNumber, signed } from '../lib/utils'
-
-
-
-
-
-
-
-
-
-
-const briefTone
-
-
- = {
-  GO: {
-    banner: 'border-jade-200/70 bg-jade-50/60 text-jade-700',
-    iconBg: 'bg-jade-600 text-white',
-    icon: CheckCircle2,
-    meter: 'jade',
-    headline: 'Proceed to validation',
-  },
-  'CONDITIONAL GO': {
-    banner: 'border-gold-200/70 bg-gold-50/60 text-gold-700',
-    iconBg: 'bg-gold-500 text-white',
-    icon: AlertTriangle,
-    meter: 'gold',
-    headline: 'Proceed with discipline',
-  },
-  'NO-GO': {
-    banner: 'border-coral-200/70 bg-coral-50/60 text-coral-700',
-    iconBg: 'bg-coral-500 text-white',
-    icon: XCircle,
-    meter: 'coral',
-    headline: 'Reconsider the setup',
-  },
-}
-
-const briefTabs = [
-  { value: 'signals', label: 'Signals' },
-  { value: 'risks', label: 'Risks' },
-  { value: 'plan', label: 'Action plan' },
-]
-
-function renderInline(text) {
-  return text.split(/(\*\*[^*]+\*\*)/g).map((part, index) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return (
-        <strong key={index} className="font-bold text-ink">
-          {part.slice(2, -2)}
-        </strong>
-      )
-    }
-    return <span key={index}>{part}</span>
-  })
-}
+import { useApiResource } from '../hooks/useApiResource'
+import { marketApi } from '../lib/api'
+import { cn, formatNumber } from '../lib/utils'
 
 function RichText({ text }) {
   const lines = text.split('\n').filter((line) => line.trim().length > 0)
@@ -103,11 +33,11 @@ function RichText({ text }) {
     <div className="space-y-1.5 text-[11.5px] leading-relaxed text-ink-mute">
       {lines.map((line, index) => {
         const trimmed = line.trim()
-        if (trimmed.startsWith('• ')) {
+        if (trimmed.startsWith('• ') || trimmed.startsWith('- ')) {
           return (
             <div key={index} className="flex gap-1.5">
               <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-brand-400" />
-              <p>{renderInline(trimmed.slice(2))}</p>
+              <p>{trimmed.slice(2)}</p>
             </div>
           )
         }
@@ -116,297 +46,474 @@ function RichText({ text }) {
           return (
             <div key={index} className="flex gap-1.5">
               <span className="tabular shrink-0 font-bold text-brand-600">{numbered[1]}.</span>
-              <p>{renderInline(numbered[2])}</p>
+              <p>{numbered[2]}</p>
             </div>
           )
         }
-        return <p key={index}>{renderInline(trimmed)}</p>
+        return <p key={index}>{trimmed}</p>
       })}
     </div>
   )
 }
 
-function BriefBullet({ text, tone = 'brand' }) {
-  const dots = {
-    brand: 'bg-brand-400',
-    jade: 'bg-jade-500',
-    coral: 'bg-coral-500',
-    gold: 'bg-gold-500',
-  }
-  return (
-    <div className="flex gap-2">
-      <span className={cn('mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full', dots[tone])} />
-      <p className="text-[10.5px] leading-relaxed text-ink-mute">{text}</p>
-    </div>
-  )
+function promptList(localityName, categoryName) {
+  return [
+    `How competitive is ${localityName} for ${categoryName.toLowerCase()} according to the mapped data?`,
+    `Explain the main risk factors for ${localityName}.`,
+    `Compare ${localityName} with other supported localities for this category.`,
+    'What limitations should I keep in mind before using this analysis?',
+  ]
 }
 
 export function AIAssistant() {
+  const { categoryId, localityId, radius, business } = useMarket()
+  const contextKey = [categoryId, localityId, radius, business?.osm_id ?? 'none'].join('|')
+  return <AssistantWorkspace key={contextKey} />
+}
+
+function AssistantWorkspace() {
   const navigate = useNavigate()
   const {
+    categories,
+    localities,
     category,
     categoryId,
     locality,
     localityId,
     setCategoryId,
     setLocalityId,
+    radius,
+    dataReady,
+    metaLoading,
+    metaError,
+    reloadMeta,
+    health,
+    business,
+    isBusinessMode,
   } = useMarket()
-  const [briefTab, setBriefTab] = useState('signals')
+
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState([])
-  const [typing, setTyping] = useState(false)
-  const [toast, setToast] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const [copyStatus, setCopyStatus] = useState('')
   const scrollRef = useRef(null)
-  const timerRef = useRef(null)
-  const busyRef = useRef(false)
-  const idRef = useRef(0)
 
-  const brief = useMemo(() => buildMarketBrief(categoryId, localityId), [categoryId, localityId])
-  const snapshot = useMemo(() => getMarketSnapshot(categoryId, localityId), [categoryId, localityId])
-  const risk = useMemo(() => calculateRisk(categoryId, localityId, defaultRiskInputs), [categoryId, localityId])
-  const tone = briefTone[brief.recommendation]
-  const RecIcon = tone.icon
+  const assistant = health?.assistant
+  const configured = Boolean(assistant?.configured)
 
-  const intro = useMemo(
-    () =>
-      `**${locality.name} · ${category.name}**\n\nWe estimate ${formatNumber(snapshot.presence)} ${category.shortName.toLowerCase()} establishments here, with competition at ${snapshot.competition}/100 and opportunity at ${snapshot.opportunity}/100. The current read is **${brief.recommendation}** at ${brief.confidence}% confidence.\n\nAsk me about saturation, rent, risks, growth, or where else to look in Hyderabad.`,
-    [brief, category, locality, snapshot],
-  )
-
-  const prompts = useMemo(
-    () => [
-      {
-        label: 'Gauge saturation',
-        icon: UsersRound,
-        question: `How saturated is ${locality.name} for ${category.shortName.toLowerCase()}?`,
-      },
-      {
-        label: 'Rent & break-even',
-        icon: Wallet,
-        question: 'What rent should I budget here, and what revenue do I need to break even?',
-      },
-      {
-        label: 'Biggest risks',
-        icon: ShieldAlert,
-        question: 'What are the biggest risks at this location?',
-      },
-      {
-        label: 'Strongest localities',
-        icon: MapPin,
-        question: `Which localities fit ${category.shortName.toLowerCase()} best?`,
-      },
-    ],
-    [category.shortName, locality.name],
-  )
-
-  const nextId = () => {
-    idRef.current += 1
-    return `msg-${idRef.current}`
-  }
-
-  useEffect(() => {
-    busyRef.current = false
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current)
-      timerRef.current = null
-    }
-    setTyping(false)
-    setInput('')
-    setMessages([{ id: `intro-${categoryId}-${localityId}`, role: 'assistant', content: intro }])
-  }, [categoryId, localityId, intro])
-
-  useEffect(
-    () => () => {
-      if (timerRef.current !== null) window.clearTimeout(timerRef.current)
+  const contextResult = useApiResource(
+    async ({ signal }) => {
+      const snapshotRequest = isBusinessMode
+        ? marketApi.getBusinessContext(
+            { osm_id: business.osm_id, category: categoryId, radius_m: radius },
+            { signal },
+          )
+        : marketApi.getLocalityAnalysis(
+            { locality: localityId, category: categoryId, radius_m: radius },
+            { signal },
+          )
+      const competitorsRequest = isBusinessMode
+        ? marketApi.getBusinessCompetitors(
+            { osm_id: business.osm_id, category: categoryId, radius_m: radius, limit: 20 },
+            { signal },
+          )
+        : marketApi.getCompetitors(
+            { locality: localityId, category: categoryId, radius_m: radius, limit: 20 },
+            { signal },
+          )
+      const riskRequest = isBusinessMode
+        ? marketApi.estimateBusinessRisk(
+            { osm_id: business.osm_id, category: categoryId, radius_m: radius },
+            { signal },
+          )
+        : marketApi.estimateRisk(
+            { locality: localityId, category: categoryId, radius_m: radius },
+            { signal },
+          )
+      const [snapshot, competitors, risk, allLocalities, trends] = await Promise.all([
+        snapshotRequest,
+        competitorsRequest,
+        riskRequest,
+        marketApi.getAllLocalityAnalysis({ category: categoryId, radius_m: radius }, { signal }),
+        marketApi.getTrends({ category: categoryId }, { signal }),
+      ])
+      return { snapshot, competitors, risk, allLocalities, trends }
     },
-    [],
+    [isBusinessMode, business?.osm_id, localityId, categoryId, radius],
+    { enabled: dataReady },
   )
+
+  const context = contextResult.data
+  const snapshot = context?.snapshot
+  const risk = context?.risk
+  const competitors = context?.competitors
+  const scores = snapshot?.scores ?? {}
+  const riskBand = risk?.risk_band ?? 'insufficient_data'
+
+  const analysisContext = useMemo(() => {
+    if (!context) return null
+    const localityRows = (context.allLocalities?.localities ?? [])
+      .map((entry) => ({
+        locality: entry.locality.name,
+        zone: entry.locality.zone,
+        mapped_pois: entry.mapped_poi_count,
+        density_per_sq_km: entry.density_per_sq_km,
+        competition_index: entry.scores.competition_index,
+        opportunity_index: entry.scores.opportunity_index,
+        activity_index: entry.scores.activity_index,
+        access_index: entry.scores.access_index,
+        data_completeness: entry.scores.data_completeness,
+        data_status: entry.data_status,
+      }))
+      .filter((entry) => entry.opportunity_index !== null)
+      .sort((a, b) => b.opportunity_index - a.opportunity_index)
+      .slice(0, 10)
+
+    return {
+      selected_scope: {
+        category: category?.name,
+        locality: isBusinessMode ? business?.nearest_locality_name : locality?.name,
+        radius_m: radius,
+        business: isBusinessMode
+          ? {
+              name: business?.name,
+              osm_id: business?.osm_id,
+              mapped_coordinate: { latitude: business?.latitude, longitude: business?.longitude },
+              nearest_locality: business?.nearest_locality_name,
+              note: 'Selected business is excluded from its own competitor count.',
+            }
+          : null,
+      },
+      market_snapshot: {
+        data_status: snapshot?.data_status,
+        mapped_poi_count: snapshot?.mapped_poi_count,
+        named_poi_count: snapshot?.named_poi_count,
+        unnamed_poi_count: snapshot?.unnamed_poi_count,
+        density_per_sq_km: snapshot?.density_per_sq_km,
+        category_share_of_mapped_pct: snapshot?.category_share_of_mapped_pct,
+        all_mapped_poi_count_in_catchment: snapshot?.all_mapped_poi_count_in_catchment,
+        category_mix_hhi: snapshot?.category_mix_hhi,
+        scores: snapshot?.scores,
+        competition_context: snapshot?.competition_context,
+        activity_context: snapshot?.activity_context,
+        access_counts: snapshot?.access_counts,
+        data_quality: snapshot?.data_quality,
+        analysis_center: snapshot?.analysis_center,
+        data_notes: snapshot?.data_notes,
+      },
+      directional_risk: risk
+        ? {
+            risk_score: risk.risk_score,
+            risk_band: risk.risk_band,
+            data_status: risk.data_status,
+            message: risk.message,
+            factors: (risk.factors ?? []).map((factor) => ({
+              label: factor.label,
+              signal_value: factor.signal_value,
+              risk_points: factor.risk_points,
+              applied_weight: factor.applied_weight,
+              explanation: factor.explanation,
+            })),
+            data_notes: risk.data_notes,
+          }
+        : null,
+      competitor_summary: competitors
+        ? {
+            competitor_count: competitors.competitor_count,
+            unnamed_competitor_count: competitors.unnamed_competitor_count,
+            unnamed_competitor_share_pct: competitors.unnamed_competitor_share_pct,
+            category_mix: (competitors.category_mix ?? []).slice(0, 6),
+            nearest_records: (competitors.competitors ?? []).slice(0, 12).map((item) => ({
+              name: item.display_name,
+              subtype: item.subtype,
+              distance_m: item.distance_m,
+              inside_ghmc: item.inside_ghmc,
+              name_status: item.name_status,
+            })),
+            data_notes: competitors.data_notes,
+          }
+        : null,
+      locality_opportunity_ranking: localityRows,
+      historical_trends: context.trends
+        ? {
+            ghmc_annual_totals: context.trends.ghmc_licence_activity?.annual_totals,
+            ghmc_yoy_change_2022_to_2023_pct:
+              context.trends.ghmc_licence_activity?.yoy_change_2022_to_2023_pct,
+            ghmc_circle_count: context.trends.ghmc_licence_activity?.circle_count,
+            ghmc_circles: (context.trends.ghmc_licence_activity?.circles ?? []).slice(0, 6),
+            ghmc_notes: context.trends.ghmc_licence_activity?.data_notes,
+            google_trends_available: context.trends.google_trends_available,
+            google_trends: context.trends.google_trends
+              ? {
+                  term: context.trends.google_trends.term_label,
+                  latest_week: context.trends.google_trends.latest_week,
+                  latest_interest: context.trends.google_trends.latest_interest,
+                  recent_52_week_average: context.trends.google_trends.recent_52_week_average,
+                  change_pct:
+                    context.trends.google_trends.last_52_weeks_vs_previous_52_weeks_change_pct,
+                  note: context.trends.google_trends.note,
+                }
+              : null,
+            google_trends_note: context.trends.google_trends_note,
+          }
+        : null,
+      approved_categories: categories.map((item) => item.name),
+      supported_localities: localities.map((item) => item.name),
+    }
+  }, [business, categories, category, context, isBusinessMode, localities, locality, radius, risk, snapshot, competitors])
+
+  const intro = useMemo(() => {
+    if (!snapshot) return ''
+    const scope = isBusinessMode
+      ? `${business?.name} (nearest locality: ${business?.nearest_locality_name})`
+      : `${locality?.name}`
+    const mapped = snapshot.mapped_poi_count
+    const opportunity = snapshot.scores?.opportunity_index
+    const competition = snapshot.scores?.competition_index
+    if (snapshot.data_status === 'insufficient_data') {
+      return `Selected scope: ${scope}, ${category?.name}, ${radius / 1000} km radius.\n\nThe catchment has ${formatNumber(mapped)} mapped ${category?.name?.toLowerCase()} POIs and does not meet the model's minimum data threshold. I can explain the available mapped counts and limitations, but not score the location.`
+    }
+    return `Selected scope: ${scope}, ${category?.name}, ${radius / 1000} km radius.\n\nThe catchment contains ${formatNumber(mapped)} mapped ${category?.name?.toLowerCase()} POIs. The opportunity index is ${opportunity ?? '—'}/100 and the competition index is ${competition ?? '—'}/100. The directional risk score is ${risk?.risk_score ?? '—'}/100 (${riskBand.replaceAll('_', ' ')}).\n\nAsk about the mapped supply, risk factors, locality comparisons, or dataset limitations.`
+  }, [business, category, isBusinessMode, locality, radius, risk, riskBand, snapshot])
 
   useEffect(() => {
     const element = scrollRef.current
     if (!element) return
-    element.scrollTo({
-      top: messages.length > 1 ? element.scrollHeight : 0,
-      behavior: messages.length > 1 ? 'smooth' : 'auto',
-    })
-  }, [messages, typing])
+    element.scrollTo({ top: element.scrollHeight, behavior: messages.length ? 'smooth' : 'auto' })
+  }, [messages, busy])
 
-  const sendQuestion = (raw) => {
-    const question = raw.trim()
-    if (!question || busyRef.current) return
-    busyRef.current = true
-    setTyping(true)
+  const sendQuestion = async (raw) => {
+    const content = raw.trim()
+    if (!content || busy || !configured || !analysisContext) return
+    const nextMessages = [...messages, { role: 'user', content }]
+    setMessages(nextMessages)
     setInput('')
-    setMessages((current) => [...current, { id: nextId(), role: 'user', content: question }])
-
-    const answer = answerMarketQuestion(question, categoryId, localityId)
-    timerRef.current = window.setTimeout(() => {
-      const reply = { id: nextId(), role: 'assistant', content: answer }
-      setMessages((current) => [...current, reply])
-      setTyping(false)
-      busyRef.current = false
-      timerRef.current = null
-    }, 720)
+    setError(null)
+    setBusy(true)
+    try {
+      const response = await marketApi.chatAssistant({
+        messages: nextMessages.map((message) => ({ role: message.role, content: message.content })),
+        context: analysisContext,
+      })
+      setMessages((current) => [
+        ...current,
+        {
+          role: 'assistant',
+          content: response.content,
+          model: response.model,
+          generated: response.ai_generated,
+          notes: response.notes,
+        },
+      ])
+    } catch (requestError) {
+      setError(requestError)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const clearChat = () => {
-    busyRef.current = false
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current)
-      timerRef.current = null
-    }
-    setTyping(false)
+    setMessages([])
     setInput('')
-    setMessages([{ id: nextId(), role: 'assistant', content: intro }])
+    setError(null)
   }
 
-  const buildBriefText = () =>
-    [
-      'MarketMinds — Market Brief',
-      `${category.name} · ${locality.name}`,
+  const copyTranscript = async () => {
+    const transcript = [
+      'MarketMinds assistant transcript',
+      intro,
+      ...messages.map((message) => `${message.role === 'user' ? 'You' : 'Assistant'}: ${message.content}`),
       '',
-      `Recommendation: ${brief.recommendation} (${brief.confidence}% confidence)`,
-      `Risk score: ${risk.score}/100 (${risk.band})`,
-      '',
-      'Summary',
-      brief.summary,
-      '',
-      'Opportunity signals',
-      ...brief.opportunities.map((item) => `- ${item}`),
-      '',
-      'Risks',
-      ...brief.risks.map((item) => `- ${item}`),
-      '',
-      'Competition',
-      ...brief.competition.map((item) => `- ${item}`),
-      '',
-      'Financial context',
-      ...brief.financial.map((item) => `- ${item}`),
-      '',
-      'Next steps',
-      ...brief.nextSteps.map((item, index) => `${index + 1}. ${item}`),
-      '',
-      'Illustrative estimate from mock market data. Not verified business information or financial advice.',
-    ].join('\n')
-
-  const copyBrief = async () => {
+      'AI-generated content can be wrong. Deterministic metrics remain the source of record.',
+    ].join('\n\n')
     try {
-      await navigator.clipboard.writeText(buildBriefText())
-      setToast('Brief copied to clipboard')
+      await navigator.clipboard.writeText(transcript)
+      setCopyStatus('Transcript copied')
+      window.setTimeout(() => setCopyStatus(''), 2000)
     } catch {
-      setToast('Copy is unavailable in this browser')
+      setCopyStatus('Clipboard unavailable')
     }
   }
 
-  const downloadBrief = () => {
-    const blob = new Blob([buildBriefText()], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `marketminds-brief-${localityId}-${categoryId}.txt`
-    document.body.appendChild(anchor)
-    anchor.click()
-    anchor.remove()
-    URL.revokeObjectURL(url)
-    setToast('Market brief downloaded')
+  if (metaLoading || contextResult.loading) {
+    return (
+      <div className="space-y-5">
+        <PageHeader eyebrow="AI briefing desk" title="Market assistant" location={locality?.name} />
+        <LoadingBlock label="Loading grounded analysis context for the assistant…" />
+      </div>
+    )
   }
+
+  const pageError = metaError || contextResult.error
+  if (pageError) {
+    return (
+      <div className="space-y-5">
+        <PageHeader eyebrow="AI briefing desk" title="Market assistant" location={locality?.name} />
+        <ErrorBlock
+          error={pageError}
+          onRetry={() => {
+            if (metaError) reloadMeta()
+            else contextResult.reload()
+          }}
+        />
+      </div>
+    )
+  }
+
+  const prompts = promptList(
+    isBusinessMode ? business?.nearest_locality_name ?? locality?.name : locality?.name,
+    category?.name ?? '',
+  )
+  const canSend = configured && analysisContext && !busy
 
   return (
     <div className="space-y-5">
       <PageHeader
         eyebrow="AI briefing desk"
         title="Market assistant"
-        description="Ask questions in plain language and get a decision brief grounded in the selected category and locality. Answers are generated by a deterministic mock engine."
-        location={`${locality.name} · ${category.shortName}`}
+        description="Ask questions about the selected real-data snapshot. The backend sends only the current analysis context to the configured NVIDIA model; deterministic metrics remain the source of record."
+        location={`${isBusinessMode ? business?.name : locality?.name} · ${category?.name}`}
         actions={
           <>
             <button type="button" className="btn-secondary" onClick={clearChat}>
               <RotateCcw className="h-4 w-4 text-ink-mute" />
               Clear chat
             </button>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => navigate('/financial-feasibility')}
-            >
-              <Calculator className="h-4 w-4" />
-              Test the numbers
+            <button type="button" className="btn-secondary" onClick={copyTranscript}>
+              <Copy className="h-4 w-4 text-ink-mute" />
+              {copyStatus || 'Copy transcript'}
             </button>
           </>
         }
       />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(380px,0.85fr)]">
-        <GlassPanel className="flex h-[640px] flex-col overflow-hidden sm:h-[680px] xl:h-[calc(100vh-200px)] xl:max-h-[840px] xl:min-h-[640px]">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line/70 bg-white/55 px-3.5 py-2.5">
+        <span
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[9.5px] font-bold',
+            configured
+              ? 'border-jade-200/70 bg-jade-50 text-jade-700'
+              : 'border-gold-200/70 bg-gold-50 text-gold-700',
+          )}
+        >
+          <span className={cn('h-1.5 w-1.5 rounded-full', configured ? 'bg-jade-500' : 'bg-gold-500')} />
+          {configured ? 'NVIDIA assistant configured' : 'NVIDIA assistant not configured'}
+        </span>
+        <span className="text-[10px] font-semibold text-ink-mute">
+          {assistant?.model ?? 'Model unavailable'}
+        </span>
+        <span className="h-4 w-px bg-line" />
+        <span className="text-[10px] font-medium text-ink-faint">
+          {isBusinessMode ? 'Business coordinate context' : 'Locality reference-point context'} ·{' '}
+          {radius / 1000} km · {formatNumber(snapshot?.mapped_poi_count ?? 0)} mapped POIs
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <div className="min-w-[160px]">
+            <Select
+              value={categoryId ?? undefined}
+              onChange={setCategoryId}
+              size="sm"
+              searchable
+              ariaLabel="Assistant category"
+              options={categories.map((item) => ({
+                value: item.id,
+                label: item.name,
+                icon: <CategoryGlyph icon={item.icon} tint={item.tint} size="sm" />,
+              }))}
+            />
+          </div>
+          <div className="min-w-[160px]">
+            <Select
+              value={localityId ?? undefined}
+              onChange={setLocalityId}
+              size="sm"
+              searchable
+              ariaLabel="Assistant locality"
+              searchPlaceholder="Find a locality…"
+              options={localities.map((item) => ({
+                value: item.id,
+                label: item.name,
+                hint: item.zone,
+                icon: <MapPin className="h-3.5 w-3.5 text-brand-500" />,
+              }))}
+            />
+          </div>
+        </div>
+      </div>
+
+      {!configured && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-gold-200/70 bg-gold-50/60 px-3.5 py-3">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-gold-700" />
+          <div>
+            <p className="text-[11px] font-bold text-gold-900">Configure the server-side NVIDIA key to enable chat</p>
+            <p className="mt-0.5 text-[10px] leading-relaxed text-gold-800/80">
+              Add <code className="rounded bg-white/70 px-1 py-0.5 font-mono text-[9.5px]">NVIDIA_API_KEY</code> to
+              the untracked <code className="rounded bg-white/70 px-1 py-0.5 font-mono text-[9.5px]">backend/.env</code>{' '}
+              file and restart FastAPI. The assistant never receives a key from the browser, and deterministic
+              metrics remain available.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+        <GlassPanel className="flex h-[640px] flex-col overflow-hidden sm:h-[680px] xl:h-[calc(100vh-230px)] xl:max-h-[820px] xl:min-h-[620px]">
           <div className="flex items-center justify-between gap-3 border-b border-line/60 px-4 py-3">
             <div className="flex min-w-0 items-center gap-2.5">
               <div className="clay-brand relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl">
                 <Sparkles className="h-4 w-4" />
-                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-canvas bg-jade-500" />
+                <span
+                  className={cn(
+                    'absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-canvas',
+                    configured ? 'bg-jade-500' : 'bg-gold-500',
+                  )}
+                />
               </div>
               <div className="min-w-0">
                 <p className="font-display text-[13px] font-extrabold tracking-[-0.02em] text-ink">
                   Conversation
                 </p>
                 <p className="truncate text-[9.5px] font-medium text-ink-faint">
-                  Grounded in {locality.name} · {category.shortName}
+                  Grounded in {isBusinessMode ? business?.name : locality?.name} · {category?.name}
                 </p>
               </div>
             </div>
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-jade-200/60 bg-jade-50/70 px-2 py-0.5 text-[9px] font-bold text-jade-700">
-              <span className="h-1.5 w-1.5 animate-pulse-soft rounded-full bg-jade-500" />
-              Model ready
-            </span>
+            {configured ? (
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-jade-200/60 bg-jade-50/70 px-2 py-0.5 text-[9px] font-bold text-jade-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-jade-500" />
+                Ready
+              </span>
+            ) : (
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-gold-200/60 bg-gold-50/70 px-2 py-0.5 text-[9px] font-bold text-gold-700">
+                <ShieldAlert className="h-2.5 w-2.5" />
+                Disabled
+              </span>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 gap-2 border-b border-line/60 bg-white/30 px-4 py-2.5">
-            <div>
-              <label className="label mb-1 block text-[8.5px]">Category</label>
-              <Select
-                value={categoryId}
-                onChange={setCategoryId}
-                size="sm"
-                searchable
-                ariaLabel="Assistant category"
-                options={categories.map((item) => ({
-                  value: item.id,
-                  label: item.name,
-                  hint: `${formatNumber(item.businesses)} businesses · ${signed(item.growth)}`,
-                  icon: <CategoryGlyph icon={item.icon} tint={item.tint} size="sm" />,
-                }))}
-              />
+          <div ref={scrollRef} className="scroll-slim flex-1 space-y-3.5 overflow-y-auto px-4 py-4" aria-live="polite">
+            <div className="flex items-start gap-2.5">
+              <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-brand-100 bg-brand-50 text-brand-700">
+                <Sparkles className="h-3.5 w-3.5" />
+              </div>
+              <div className="max-w-[90%] rounded-2xl rounded-bl-md border border-line/60 bg-white/75 px-3.5 py-2.5">
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <span className="text-[8.5px] font-extrabold uppercase tracking-[0.08em] text-brand-700">
+                    Deterministic context
+                  </span>
+                  <span className="rounded bg-jade-50 px-1 py-0.5 text-[7.5px] font-bold text-jade-700">
+                    not AI
+                  </span>
+                </div>
+                <RichText text={intro} />
+              </div>
             </div>
-            <div>
-              <label className="label mb-1 block text-[8.5px]">Locality</label>
-              <Select
-                value={localityId}
-                onChange={setLocalityId}
-                size="sm"
-                searchable
-                ariaLabel="Assistant locality"
-                searchPlaceholder="Find a locality…"
-                options={localities.map((item) => ({
-                  value: item.id,
-                  label: item.name,
-                  hint: `${item.zone} · ${item.competition}/100 competition`,
-                  icon: <MapPin className="h-3.5 w-3.5 text-brand-500" />,
-                }))}
-              />
-            </div>
-          </div>
 
-          <div
-            ref={scrollRef}
-            className="scroll-slim flex-1 space-y-3.5 overflow-y-auto px-4 py-4"
-            aria-live="polite"
-          >
-            {messages.map((message) => {
+            {messages.map((message, index) => {
               const isUser = message.role === 'user'
               return (
-                <div
-                  key={message.id}
-                  className={cn('flex items-start gap-2.5', isUser && 'justify-end')}
-                >
+                <div key={`${message.role}-${index}`} className={cn('flex items-start gap-2.5', isUser && 'justify-end')}>
                   {!isUser && (
                     <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-brand-100 bg-brand-50 text-brand-700">
                       <Sparkles className="h-3.5 w-3.5" />
@@ -431,14 +538,31 @@ export function AIAssistant() {
                     {isUser ? (
                       <p className="whitespace-pre-wrap text-[11.5px] leading-relaxed">{message.content}</p>
                     ) : (
-                      <RichText text={message.content} />
+                      <>
+                        <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                          <span className="text-[8.5px] font-extrabold uppercase tracking-[0.08em] text-brand-700">
+                            AI-generated
+                          </span>
+                          {message.model && (
+                            <span className="rounded bg-white/70 px-1 py-0.5 text-[7.5px] font-semibold text-ink-faint">
+                              {message.model}
+                            </span>
+                          )}
+                        </div>
+                        <RichText text={message.content} />
+                        {message.notes?.length > 0 && (
+                          <p className="mt-2 border-t border-line/50 pt-1.5 text-[8.5px] leading-relaxed text-ink-faint">
+                            {message.notes[0]}
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
               )
             })}
 
-            {typing && (
+            {busy && (
               <div className="flex items-start gap-2.5">
                 <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-brand-100 bg-brand-50 text-brand-700">
                   <Sparkles className="h-3.5 w-3.5" />
@@ -453,9 +577,22 @@ export function AIAssistant() {
                       />
                     ))}
                   </div>
-                  <span className="text-[9.5px] font-semibold text-ink-faint">
-                    Reading local market signals…
-                  </span>
+                  <span className="text-[9.5px] font-semibold text-ink-faint">Reading the supplied context…</span>
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div className="flex items-start gap-2 rounded-xl border border-coral-200/70 bg-coral-50/60 px-3 py-2.5">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-coral-700" />
+                <div>
+                  <p className="text-[10.5px] font-bold text-coral-800">Assistant request failed</p>
+                  <p className="mt-0.5 text-[10px] leading-relaxed text-coral-800/80">
+                    {error.message || 'The assistant could not complete this request.'}
+                  </p>
+                  {error.code && (
+                    <p className="mt-1 font-mono text-[8.5px] text-coral-700/70">Code: {error.code}</p>
+                  )}
                 </div>
               </div>
             )}
@@ -465,23 +602,31 @@ export function AIAssistant() {
             <div className="scroll-slim mb-2 flex items-center gap-1.5 overflow-x-auto pb-0.5">
               {prompts.map((prompt) => (
                 <button
-                  key={prompt.label}
+                  key={prompt}
                   type="button"
-                  disabled={typing}
-                  title={prompt.question}
-                  onClick={() => sendQuestion(prompt.question)}
+                  disabled={!canSend}
+                  onClick={() => sendQuestion(prompt)}
                   className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line/70 bg-white/70 px-2.5 py-1 text-[9.5px] font-semibold text-ink-mute transition-colors hover:border-brand-200 hover:bg-white hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  title={prompt}
                 >
-                  <prompt.icon className="h-3 w-3 text-brand-500" />
-                  {prompt.label}
+                  <MessageSquare className="h-3 w-3 text-brand-500" />
+                  {prompt.length > 46 ? `${prompt.slice(0, 44)}…` : prompt}
                 </button>
               ))}
             </div>
 
-            <div className="flex items-end gap-2 rounded-2xl border border-line/80 bg-white/85 p-1.5 pl-3 transition-all focus-within:border-brand-300 focus-within:shadow-[0_0_0_4px_rgba(90,87,212,0.08)]">
+            <div
+              className={cn(
+                'flex items-end gap-2 rounded-2xl border border-line/80 bg-white/85 p-1.5 pl-3 transition-all',
+                canSend
+                  ? 'focus-within:border-brand-300 focus-within:shadow-[0_0_0_4px_rgba(90,87,212,0.08)]'
+                  : 'opacity-70',
+              )}
+            >
               <textarea
                 rows={1}
                 value={input}
+                disabled={!configured}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !event.shiftKey) {
@@ -489,250 +634,129 @@ export function AIAssistant() {
                     sendQuestion(input)
                   }
                 }}
-                placeholder={`Ask about ${locality.name}…`}
-                className="max-h-24 min-h-[34px] flex-1 resize-none bg-transparent py-1.5 text-[12px] leading-relaxed text-ink outline-none placeholder:text-ink-faint"
+                placeholder={
+                  configured
+                    ? `Ask about ${isBusinessMode ? business?.name : locality?.name}…`
+                    : 'Configure NVIDIA_API_KEY on the backend to enable chat'
+                }
+                className="max-h-24 min-h-[34px] flex-1 resize-none bg-transparent py-1.5 text-[12px] leading-relaxed text-ink outline-none placeholder:text-ink-faint disabled:cursor-not-allowed"
                 aria-label="Ask the market assistant"
               />
               <button
                 type="button"
                 onClick={() => sendQuestion(input)}
-                disabled={!input.trim() || typing}
+                disabled={!canSend || !input.trim()}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white shadow-[0_4px_10px_-4px_rgba(59,55,149,0.6)] transition-all hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Send question"
               >
-                <ArrowUp className="h-4 w-4" />
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
               </button>
             </div>
             <p className="mt-1.5 flex items-center gap-1.5 text-[8.5px] font-medium text-ink-faint">
               <Info className="h-2.5 w-2.5" />
-              Mock analysis for planning only. Not financial advice or verified market data.
+              AI can be wrong. Verify mapped counts, historical data limits, and user assumptions before deciding.
             </p>
           </div>
         </GlassPanel>
 
         <div className="space-y-4">
-          <GlassPanel className="overflow-hidden">
-            <div className="flex items-start justify-between gap-3 border-b border-line/60 px-5 py-4">
-              <PanelHeader
-                eyebrow="02 · Decision brief"
-                title="What the data says"
-                description="Generated from the current category and locality context."
-                icon={FileText}
-              />
-              <button
-                type="button"
-                title="Copy brief"
-                aria-label="Copy brief"
-                onClick={() => void copyBrief()}
-                className="icon-button h-8 w-8 shrink-0"
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </button>
-            </div>
-
-            <div className="px-5 py-4">
-              <div className={cn('rounded-2xl border p-4', tone.banner)}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-2.5">
-                    <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm', tone.iconBg)}>
-                      <RecIcon className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <p className="text-[8.5px] font-bold uppercase tracking-[0.12em] opacity-70">
-                        Recommendation
-                      </p>
-                      <p className="mt-0.5 font-display text-[23px] font-extrabold leading-none tracking-[-0.04em]">
-                        {brief.recommendation}
-                      </p>
-                      <p className="mt-1 text-[9.5px] font-semibold opacity-80">{tone.headline}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[8.5px] font-bold uppercase tracking-[0.1em] opacity-60">Confidence</p>
-                    <p className="tabular font-display text-[19px] font-extrabold leading-none">
-                      {brief.confidence}%
-                    </p>
-                  </div>
-                </div>
-                <Meter
-                  value={brief.confidence}
-                  tone={tone.meter}
-                  height="xs"
-                  className="mt-3"
-                  trackClassName="bg-white/60"
-                />
+          <GlassPanel className="p-5">
+            <PanelHeader
+              eyebrow="Grounded context"
+              title="What the assistant can see"
+              description="A compact snapshot of the selected real-data scope."
+              icon={Store}
+              action={<span className="chip">Read-only</span>}
+            />
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-line/60 bg-white/45 p-2.5">
+                <p className="text-[8px] font-bold uppercase tracking-[0.08em] text-ink-faint">Mapped POIs</p>
+                <p className="tabular mt-0.5 text-[16px] font-extrabold text-ink">
+                  {formatNumber(snapshot?.mapped_poi_count ?? 0)}
+                </p>
               </div>
-
-              <div className="mt-2.5 grid grid-cols-3 gap-2">
-                <div className="rounded-xl border border-line/60 bg-white/45 px-2.5 py-2">
-                  <p className="text-[8px] font-bold uppercase tracking-[0.08em] text-ink-faint">Competition</p>
-                  <p className="tabular mt-0.5 text-[13px] font-extrabold text-ink">
-                    {snapshot.competition}
-                    <span className="ml-0.5 text-[8.5px] font-semibold text-ink-faint">/100</span>
-                  </p>
-                </div>
-                <div className="rounded-xl border border-line/60 bg-white/45 px-2.5 py-2">
-                  <p className="text-[8px] font-bold uppercase tracking-[0.08em] text-ink-faint">Opportunity</p>
-                  <p className="tabular mt-0.5 text-[13px] font-extrabold text-ink">
-                    {snapshot.opportunity}
-                    <span className="ml-0.5 text-[8.5px] font-semibold text-ink-faint">/100</span>
-                  </p>
-                </div>
-                <div className="rounded-xl border border-line/60 bg-white/45 px-2.5 py-2">
-                  <p className="text-[8px] font-bold uppercase tracking-[0.08em] text-ink-faint">Rent est.</p>
-                  <p className="tabular mt-0.5 text-[13px] font-extrabold text-ink">
-                    {formatCompactINR(snapshot.rentBenchmark)}
-                  </p>
-                </div>
+              <div className="rounded-xl border border-line/60 bg-white/45 p-2.5">
+                <p className="text-[8px] font-bold uppercase tracking-[0.08em] text-ink-faint">Nearby mapped</p>
+                <p className="tabular mt-0.5 text-[16px] font-extrabold text-ink">
+                  {formatNumber(competitors?.competitor_count ?? 0)}
+                </p>
               </div>
-
-              <p className="mt-3 text-[10.5px] leading-relaxed text-ink-mute">{brief.summary}</p>
-
-              <div className="mt-3.5">
-                <SegmentedControl
-                  value={briefTab}
-                  onChange={(value) => setBriefTab(value )}
-                  options={briefTabs}
-                  size="sm"
-                  className="w-full justify-between"
-                />
+              <div className="rounded-xl border border-line/60 bg-white/45 p-2.5">
+                <p className="text-[8px] font-bold uppercase tracking-[0.08em] text-ink-faint">Opportunity</p>
+                <p className="tabular mt-0.5 text-[16px] font-extrabold text-ink">
+                  {scores.opportunity_index ?? '—'}
+                  <span className="ml-0.5 text-[8px] text-ink-faint">/100</span>
+                </p>
               </div>
-
-              <div className="mt-3 space-y-2.5">
-                {briefTab === 'signals' && (
-                  <>
-                    <p className="label">Opportunity signals</p>
-                    {brief.opportunities.map((item, index) => (
-                      <BriefBullet key={`opportunity-${index}`} text={item} tone="jade" />
-                    ))}
-                    <div className="hairline my-1" />
-                    <p className="label">Competitive context</p>
-                    {brief.competition.slice(0, 2).map((item, index) => (
-                      <BriefBullet key={`competition-${index}`} text={item} tone="brand" />
-                    ))}
-                  </>
-                )}
-
-                {briefTab === 'risks' && (
-                  <>
-                    <div className="flex items-center justify-between rounded-xl border border-line/60 bg-white/45 px-2.5 py-2">
-                      <span className="text-[9.5px] font-semibold text-ink-mute">Estimated risk score</span>
-                      <span className="tabular text-[10.5px] font-extrabold text-ink">
-                        {risk.score}/100 · {risk.band}
-                      </span>
-                    </div>
-                    <p className="label pt-1">Primary risks</p>
-                    {brief.risks.slice(0, 3).map((item, index) => (
-                      <BriefBullet key={`risk-${index}`} text={item} tone="coral" />
-                    ))}
-                    <div className="hairline my-1" />
-                    <p className="label">Financial read</p>
-                    {brief.financial.slice(0, 2).map((item, index) => (
-                      <BriefBullet key={`financial-${index}`} text={item} tone="gold" />
-                    ))}
-                  </>
-                )}
-
-                {briefTab === 'plan' && (
-                  <>
-                    <p className="label">Recommended next steps</p>
-                    {brief.nextSteps.map((step, index) => (
-                      <div key={`step-${index}`} className="flex gap-2.5 rounded-xl border border-line/60 bg-white/40 p-2.5">
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-600 text-[8.5px] font-extrabold text-white">
-                          {index + 1}
-                        </span>
-                        <p className="text-[10.5px] leading-relaxed text-ink-mute">{step}</p>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => navigate('/financial-feasibility')}
-                      className="flex w-full items-center justify-between rounded-xl border border-brand-100 bg-brand-50/50 px-2.5 py-2 text-[10px] font-bold text-brand-700 transition-colors hover:bg-brand-50"
-                    >
-                      Stress-test these numbers in the feasibility calculator
-                      <ArrowRight className="h-3 w-3" />
-                    </button>
-                  </>
-                )}
+              <div className="rounded-xl border border-line/60 bg-white/45 p-2.5">
+                <p className="text-[8px] font-bold uppercase tracking-[0.08em] text-ink-faint">Risk</p>
+                <p className="tabular mt-0.5 text-[16px] font-extrabold text-ink">
+                  {risk?.risk_score ?? '—'}
+                  <span className="ml-0.5 text-[8px] text-ink-faint">/100</span>
+                </p>
               </div>
             </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line/60 bg-white/30 px-5 py-2.5">
-              <p className="max-w-[220px] text-[8.5px] font-medium leading-relaxed text-ink-faint">
-                Illustrative estimates from mock market data. Validate before committing capital.
+            <div className="mt-2.5 space-y-2">
+              <div>
+                <div className="flex justify-between text-[9.5px] font-semibold text-ink-mute">
+                  <span>Competition index</span>
+                  <span>{scores.competition_index ?? '—'}/100</span>
+                </div>
+                <Meter value={scores.competition_index ?? 0} tone="coral" height="xs" className="mt-1" />
+              </div>
+              <div>
+                <div className="flex justify-between text-[9.5px] font-semibold text-ink-mute">
+                  <span>Data completeness</span>
+                  <span>{scores.data_completeness ?? '—'}/100</span>
+                </div>
+                <Meter value={scores.data_completeness ?? 0} tone="gold" height="xs" className="mt-1" />
+              </div>
+            </div>
+            <div className="mt-3 rounded-xl border border-line/60 bg-white/40 p-2.5 text-[9.5px] leading-relaxed text-ink-mute">
+              <p className="font-bold text-ink">Analysis centre</p>
+              <p className="mt-0.5">{snapshot?.catchment?.center_label ?? '—'}</p>
+              <p className="mt-0.5 text-ink-faint">
+                {snapshot?.catchment?.center_kind ?? 'Approximate context'} · {radius / 1000} km circular
+                catchment
               </p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void copyBrief()}
-                  className="inline-flex items-center gap-1 text-[9.5px] font-bold text-brand-700 hover:text-brand-900"
-                >
-                  <Copy className="h-3 w-3" />
-                  Copy
-                </button>
-                <span className="h-3 w-px bg-line" />
-                <button
-                  type="button"
-                  onClick={downloadBrief}
-                  className="inline-flex items-center gap-1 text-[9.5px] font-bold text-brand-700 hover:text-brand-900"
-                >
-                  <Download className="h-3 w-3" />
-                  Download
-                </button>
-              </div>
             </div>
+            {snapshot?.data_status === 'insufficient_data' && (
+              <p className="mt-2 rounded-lg border border-gold-200/60 bg-gold-50/60 px-2.5 py-2 text-[9px] leading-relaxed text-gold-800">
+                {snapshot?.data_quality?.message}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => navigate(isBusinessMode ? '/competitor-intelligence' : '/market-explorer')}
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-line/70 bg-white/50 py-2 text-[10.5px] font-bold text-brand-700 transition-colors hover:bg-white"
+            >
+              <UsersRound className="h-3 w-3" />
+              Open the deterministic view
+            </button>
           </GlassPanel>
 
           <GlassPanel className="p-4">
             <PanelHeader
-              eyebrow="Next move"
-              title="Continue the analysis"
-              description="Move from the brief to a specific decision."
-              icon={Compass}
+              eyebrow="Data boundaries"
+              title="Included limitations"
+              description="The assistant is instructed to preserve these boundaries."
+              icon={Info}
             />
-            <div className="mt-3 grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
-              {[
-                {
-                  label: 'Model location risk',
-                  detail: `${risk.score}/100 estimate`,
-                  icon: ShieldAlert,
-                  to: '/risk-analysis',
-                },
-                {
-                  label: 'Compare localities',
-                  detail: 'Rank fit and rent head-to-head',
-                  icon: MapPin,
-                  to: '/location-comparison',
-                },
-                {
-                  label: 'Test financial feasibility',
-                  detail: 'Stress-test margin and payback',
-                  icon: Calculator,
-                  to: '/financial-feasibility',
-                },
-              ].map((action) => (
-                <button
-                  key={action.label}
-                  type="button"
-                  onClick={() => navigate(action.to)}
-                  className="group flex items-center gap-2.5 rounded-xl border border-line/60 bg-white/40 px-2.5 py-2 text-left transition-all hover:border-brand-200/70 hover:bg-white/80"
-                >
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line/70 bg-white/70 text-brand-700">
-                    <action.icon className="h-3.5 w-3.5" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[10.5px] font-bold text-ink">{action.label}</span>
-                    <span className="block truncate text-[8.5px] font-medium text-ink-faint">{action.detail}</span>
-                  </span>
-                  <ArrowRight className="h-3 w-3 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-brand-600" />
-                </button>
+            <div className="mt-3 space-y-2">
+              {(snapshot?.data_notes ?? []).slice(0, 5).map((note) => (
+                <SourceNote key={note}>{note}</SourceNote>
               ))}
+              {!snapshot?.data_notes?.length && (
+                <SourceNote>Mapped POIs come from OpenStreetMap and are not a verified business register.</SourceNote>
+              )}
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-[8.5px] font-semibold text-jade-700">
+              <CheckCircle2 className="h-3 w-3" />
+              Context-loaded: risk, competitors, locality ranking, trends
             </div>
           </GlassPanel>
         </div>
       </div>
-
-      <Toast message={toast} onClose={() => setToast(null)} />
     </div>
   )
 }

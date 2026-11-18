@@ -1,4 +1,5 @@
 import {
+  Beef,
   Building2,
   Coffee,
   Cookie,
@@ -29,6 +30,7 @@ const icons = {
   bakery: Cookie,
   pharmacy: Pill,
   realestate: Building2,
+  meat: Beef,
 }
 
 export const tintStyles = {

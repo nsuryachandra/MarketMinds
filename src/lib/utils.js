@@ -39,23 +39,6 @@ export function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
 }
 
-export function hashString(value) {
-  let hash = 2166136261
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i)
-    hash = Math.imul(hash, 16777619)
-  }
-  return Math.abs(hash)
-}
-
-export function seededRandom(seed) {
-  let state = hashString(seed) || 1
-  return () => {
-    state = (state * 1664525 + 1013904223) % 4294967296
-    return state / 4294967296
-  }
-}
-
 export function marketCap(value) {
   return value < 10 ? value.toFixed(1) : `${Math.round(value)}`
 }

@@ -1,31 +1,60 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { CheckCircle2, ChevronRight, Loader2, MapPin, RefreshCw, X } from 'lucide-react'
+import {
+  CheckCircle2,
+  ChevronRight,
+  Database,
+  Loader2,
+  MapPin,
+  RefreshCw,
+  TriangleAlert,
+  X,
+} from 'lucide-react'
 import { Logo } from '../ui/Logo'
 import { navigation } from './navigation'
 import { useMarket } from '../../context/MarketContext'
 import { CategoryGlyph } from '../ui/CategoryGlyph'
 import { Meter } from '../ui/Meter'
-import { cn } from '../../lib/utils'
-
-
-
-
-
+import { cn, formatNumber } from '../../lib/utils'
 
 export function Sidebar({ open, onClose }) {
-  const { category, locality } = useMarket()
+  const {
+    category,
+    locality,
+    business,
+    isBusinessMode,
+    health,
+    healthLoading,
+    refreshHealth,
+    localities,
+    categories,
+    metaLoading,
+    metaError,
+  } = useMarket()
   const [refreshing, setRefreshing] = useState(false)
-  const [lastSync, setLastSync] = useState('4 min ago')
 
-  const refresh = () => {
+  const refresh = async () => {
     if (refreshing) return
     setRefreshing(true)
-    window.setTimeout(() => {
+    try {
+      await refreshHealth()
+    } finally {
       setRefreshing(false)
-      setLastSync('just now')
-    }, 1100)
+    }
   }
+
+  const loadedSources = health?.sources?.loaded ?? 0
+  const totalSources = health?.sources?.total ?? 0
+  const coverage = totalSources ? (loadedSources / totalSources) * 100 : 0
+  const status = health?.status === 'ok' ? 'live' : health ? 'partial' : 'offline'
+  const contextLabel = isBusinessMode ? business?.name : category?.shortName ?? category?.name
+  const contextDetail = isBusinessMode
+    ? `${business?.category?.name ?? category?.name ?? 'Mapped business'} · ${
+        business?.nearest_locality?.name ?? locality?.name ?? 'Hyderabad'
+      }`
+    : locality
+      ? `${locality.name}, Hyderabad`
+      : 'Waiting for API metadata'
 
   return (
     <aside
@@ -51,22 +80,61 @@ export function Sidebar({ open, onClose }) {
       <div className="mx-4 mb-4 rounded-2xl border border-line/70 bg-white/55 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
         <div className="flex items-center justify-between">
           <span className="label">Analysis context</span>
-          <span className="inline-flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-[0.08em] text-jade-700">
-            <span className="h-1.5 w-1.5 animate-pulse-soft rounded-full bg-jade-500" />
-            Demo data
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-[0.08em]',
+              status === 'live' ? 'text-jade-700' : status === 'partial' ? 'text-gold-700' : 'text-coral-700',
+            )}
+          >
+            <span
+              className={cn(
+                'h-1.5 w-1.5 rounded-full',
+                status === 'live'
+                  ? 'animate-pulse-soft bg-jade-500'
+                  : status === 'partial'
+                    ? 'bg-gold-500'
+                    : 'bg-coral-500',
+              )}
+            />
+            {status === 'live' ? 'Live data' : status === 'partial' ? 'Partial data' : 'API offline'}
           </span>
         </div>
-        <div className="mt-2 flex items-center gap-2.5">
-          <CategoryGlyph icon={category.icon} tint={category.tint} size="sm" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[12px] font-bold text-ink">{category.shortName}</p>
-            <p className="flex items-center gap-1 truncate text-[10.5px] font-medium text-ink-mute">
-              <MapPin className="h-2.5 w-2.5 text-brand-500" />
-              {locality.name}, Hyderabad
-            </p>
+        {metaLoading ? (
+          <div className="mt-2 flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-[9px] border border-line bg-white/60">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-600" />
+            </span>
+            <div className="space-y-1.5">
+              <span className="block h-2.5 w-24 animate-pulse rounded bg-ink/10" />
+              <span className="block h-2 w-32 animate-pulse rounded bg-ink/5" />
+            </div>
           </div>
-          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-faint" />
-        </div>
+        ) : metaError ? (
+          <button
+            type="button"
+            onClick={refresh}
+            className="mt-2 flex w-full items-center gap-2 rounded-xl border border-coral-200/70 bg-coral-50/50 px-2.5 py-2 text-left text-[10.5px] font-semibold text-coral-800"
+          >
+            <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+            Metadata unavailable. Retry API status.
+          </button>
+        ) : (
+          <div className="mt-2 flex items-center gap-2.5">
+            <CategoryGlyph
+              icon={isBusinessMode ? category?.icon ?? 'coffee' : category?.icon}
+              tint={category?.tint ?? 'slate'}
+              size="sm"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[12px] font-bold text-ink">{contextLabel ?? 'No selection'}</p>
+              <p className="flex items-center gap-1 truncate text-[10.5px] font-medium text-ink-mute">
+                <MapPin className="h-2.5 w-2.5 shrink-0 text-brand-500" />
+                {contextDetail}
+              </p>
+            </div>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-faint" />
+          </div>
+        )}
       </div>
 
       <nav className="scroll-slim flex-1 overflow-y-auto px-3 pb-2">
@@ -120,25 +188,32 @@ export function Sidebar({ open, onClose }) {
       <div className="border-t border-line/60 px-4 pb-4 pt-3.5">
         <div className="rounded-2xl border border-white/80 bg-[linear-gradient(150deg,rgba(255,255,255,0.8),rgba(244,241,251,0.65))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
           <div className="flex items-center justify-between">
-            <span className="text-[10.5px] font-bold text-ink-soft">Hyderabad coverage</span>
-            <span className="tabular text-[10px] font-bold text-brand-700">86%</span>
+            <span className="text-[10.5px] font-bold text-ink-soft">Data sources ready</span>
+            <span className="tabular text-[10px] font-bold text-brand-700">
+              {loadedSources}/{totalSources || '—'}
+            </span>
           </div>
-          <Meter value={86} tone="brand" height="xs" className="mt-1.5" />
+          <Meter value={coverage} tone="brand" height="xs" className="mt-1.5" />
           <p className="mt-1.5 text-[9.5px] font-medium leading-relaxed text-ink-faint">
-            16 localities · 12 categories tracked
+            {formatNumber(health?.table_counts?.businesses ?? 0)} mapped POIs ·{' '}
+            {localities.length} localities · {categories.length} categories
           </p>
         </div>
 
         <div className="mt-2 flex items-center justify-between rounded-xl px-1 py-1.5">
           <span className="flex items-center gap-1.5 text-[10.5px] font-medium text-ink-faint">
-            <CheckCircle2 className="h-3 w-3 text-jade-600" />
-            Synced {lastSync}
+            {status === 'live' ? (
+              <CheckCircle2 className="h-3 w-3 text-jade-600" />
+            ) : (
+              <TriangleAlert className="h-3 w-3 text-gold-600" />
+            )}
+            {healthLoading ? 'Checking API…' : status === 'live' ? 'API connected' : 'API needs attention'}
           </span>
           <button
             type="button"
             onClick={refresh}
             className="flex h-7 w-7 items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-ink/5 hover:text-ink-soft"
-            aria-label="Refresh demo data"
+            aria-label="Refresh API status"
           >
             {refreshing ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-600" />
@@ -149,22 +224,15 @@ export function Sidebar({ open, onClose }) {
         </div>
 
         <div className="mt-1 flex items-center gap-2.5 rounded-xl border border-line/60 bg-white/55 p-2">
-          <div
-            className="flex h-8 w-8 items-center justify-center rounded-full text-[10.5px] font-extrabold text-white"
-            style={{
-              background: 'linear-gradient(140deg, #6d6ae4, #35328c)',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.35), 0 4px 10px -6px rgba(47,43,119,0.6)',
-            }}
-          >
-            AM
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[11.5px] font-bold text-ink">Aarav Mehta</p>
-            <p className="truncate text-[9.5px] font-medium text-ink-faint">Analyst workspace</p>
-          </div>
-          <span className="rounded-md border border-line bg-white/70 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.08em] text-ink-faint">
-            Demo
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 text-brand-700">
+            <Database className="h-3.5 w-3.5" />
           </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[10.5px] font-bold text-ink">Local SQLite workspace</p>
+            <p className="truncate text-[9.5px] font-medium text-ink-faint">
+              OSM · GHMC · UDISE+ · Metro · Trends
+            </p>
+          </div>
         </div>
       </div>
     </aside>

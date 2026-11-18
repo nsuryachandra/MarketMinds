@@ -1,83 +1,55 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import {
-  Bell,
-  CheckCheck,
+  CheckCircle2,
   Command,
+  Database,
+  MapPin,
   Menu,
   Search,
-  ShieldAlert,
   Sparkles,
-  TrendingUp,
+  TriangleAlert,
 } from 'lucide-react'
 import { Select } from '../ui/Select'
 import { useMarket } from '../../context/MarketContext'
-import { localities } from '../../data/localities'
 import { allNavItems } from './navigation'
-import { cn } from '../../lib/utils'
+import { cn, formatNumber } from '../../lib/utils'
 
-
-
-
-
-
-const competitionDot = (competition) =>
-  competition >= 70 ? 'bg-coral-500' : competition >= 45 ? 'bg-gold-500' : 'bg-jade-500'
-
-const initialNotifications = [
-  {
-    id: 'n1',
-    icon: Sparkles,
-    tone: 'text-brand-700 bg-brand-50 border-brand-100',
-    title: 'Kokapet crossed the 85 opportunity threshold',
-    detail: 'Grocery and everyday retail supply remains thin.',
-    time: '2h ago',
-    to: '/market-explorer',
-    read: false,
-  },
-  {
-    id: 'n2',
-    icon: ShieldAlert,
-    tone: 'text-coral-700 bg-coral-50 border-coral-100',
-    title: 'Café competition elevated in Banjara Hills',
-    detail: 'Three new openings detected in the last 90 days.',
-    time: '5h ago',
-    to: '/competitor-intelligence',
-    read: false,
-  },
-  {
-    id: 'n3',
-    icon: TrendingUp,
-    tone: 'text-sea-700 bg-sea-50 border-sea-100',
-    title: 'Weekly market digest is ready',
-    detail: 'Wellness and tech lead this week’s registration growth.',
-    time: 'Yesterday',
-    to: '/market-assistant',
-    read: true,
-  },
-]
+const statusTone = {
+  ok: 'text-jade-700 bg-jade-50 border-jade-200/70',
+  degraded: 'text-gold-700 bg-gold-50 border-gold-200/70',
+  offline: 'text-coral-700 bg-coral-50 border-coral-200/70',
+}
 
 export function Topbar({ onOpenMenu, onOpenSearch }) {
   const location = useLocation()
-  const navigate = useNavigate()
-  const { localityId, setLocalityId } = useMarket()
-  const [notifications, setNotifications] = useState(initialNotifications)
-  const [notificationsOpen, setNotificationsOpen] = useState(false)
-  const notificationsRef = useRef(null)
+  const {
+    localities,
+    localityId,
+    setLocalityId,
+    health,
+    healthLoading,
+    refreshHealth,
+    metaLoading,
+  } = useMarket()
+  const [statusOpen, setStatusOpen] = useState(false)
+  const statusRef = useRef(null)
 
   const currentPage = allNavItems.find((item) => item.to === location.pathname)
-  const unread = notifications.filter((item) => !item.read).length
+  const status = health?.status === 'ok' ? 'ok' : health ? 'degraded' : 'offline'
+  const loadedSources = health?.sources?.loaded ?? 0
+  const totalSources = health?.sources?.total ?? 0
+  const businessCount = health?.table_counts?.businesses ?? 0
+  const assistantConfigured = Boolean(health?.assistant?.configured)
 
   useEffect(() => {
-    if (!notificationsOpen) return
+    if (!statusOpen) return undefined
     const handleOutside = (event) => {
-      if (!notificationsRef.current?.contains(event.target )) {
-        setNotificationsOpen(false)
-      }
+      if (!statusRef.current?.contains(event.target)) setStatusOpen(false)
     }
     document.addEventListener('mousedown', handleOutside)
     return () => document.removeEventListener('mousedown', handleOutside)
-  }, [notificationsOpen])
+  }, [statusOpen])
 
   return (
     <header className="sticky top-0 z-30 border-b border-line/60 bg-[rgba(246,242,234,0.78)] backdrop-blur-2xl">
@@ -123,96 +95,107 @@ export function Topbar({ onOpenMenu, onOpenSearch }) {
           </button>
 
           <div className="hidden items-center gap-1 rounded-xl border border-line/80 bg-white/55 pl-2.5 sm:flex">
-            <span className="h-1.5 w-1.5 animate-pulse-soft rounded-full bg-jade-500" />
-            <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-ink-faint">Demo</span>
+            <MapPin className="h-3 w-3 text-brand-600" />
             <Select
-              value={localityId}
+              value={localityId ?? undefined}
               onChange={setLocalityId}
               size="sm"
               searchable
               ariaLabel="Analysis locality"
-              searchPlaceholder="Find a locality…"
-              className="w-[150px] xl:w-[172px]"
+              searchPlaceholder={metaLoading ? 'Loading localities…' : 'Find a locality…'}
+              placeholder={metaLoading ? 'Loading…' : 'Locality'}
+              className="w-[158px] xl:w-[178px]"
               buttonClassName="h-9 border-0 bg-transparent px-1.5 pr-2 shadow-none hover:bg-transparent focus-visible:ring-0"
               menuClassName="w-[252px]"
               options={localities.map((locality) => ({
                 value: locality.id,
                 label: locality.name,
-                hint: `${locality.zone} · ${locality.businesses.toLocaleString('en-IN')} businesses`,
-                icon: <span className={cn('h-1.5 w-1.5 rounded-full', competitionDot(locality.competition))} />,
+                hint: `${locality.zone} · approximate centre`,
               }))}
             />
           </div>
 
-          <div ref={notificationsRef} className="relative">
+          <div ref={statusRef} className="relative">
             <button
               type="button"
-              onClick={() => setNotificationsOpen((current) => !current)}
-              className={cn('icon-button relative h-9 w-9', notificationsOpen && 'border-brand-200 bg-white text-brand-700')}
-              aria-label="Notifications"
-              aria-expanded={notificationsOpen}
-            >
-              <Bell className="h-4 w-4" />
-              {unread > 0 && (
-                <span className="absolute right-1.5 top-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-coral-500 text-[8px] font-extrabold text-white ring-2 ring-canvas">
-                  {unread}
-                </span>
+              onClick={() => {
+                setStatusOpen((current) => !current)
+                if (!statusOpen) refreshHealth()
+              }}
+              className={cn(
+                'icon-button relative h-9 gap-1.5 px-2.5 text-[10px] font-bold uppercase tracking-[0.06em]',
+                statusOpen && 'border-brand-200 bg-white text-brand-700',
               )}
+              aria-label="API status"
+              aria-expanded={statusOpen}
+            >
+              <span
+                className={cn(
+                  'h-1.5 w-1.5 rounded-full',
+                  status === 'ok'
+                    ? 'bg-jade-500'
+                    : status === 'degraded'
+                      ? 'bg-gold-500'
+                      : 'bg-coral-500',
+                )}
+              />
+              <span className="hidden md:inline">
+                {healthLoading ? 'Checking' : status === 'ok' ? 'API live' : 'API issue'}
+              </span>
+              <Database className="h-3.5 w-3.5 md:hidden" />
             </button>
 
-            {notificationsOpen && (
-              <div className="absolute right-0 top-11 w-[320px] overflow-hidden rounded-2xl border border-white/80 bg-[rgba(255,255,255,0.97)] shadow-lift backdrop-blur-2xl">
-                <div className="flex items-center justify-between border-b border-line/70 px-4 py-3">
+            {statusOpen && (
+              <div className="absolute right-0 top-11 w-[310px] overflow-hidden rounded-2xl border border-white/80 bg-[rgba(255,255,255,0.97)] shadow-lift backdrop-blur-2xl">
+                <div className="flex items-start justify-between gap-3 border-b border-line/70 px-4 py-3">
                   <div>
-                    <p className="font-display text-[13px] font-extrabold text-ink">Notifications</p>
-                    <p className="text-[10.5px] text-ink-faint">Signals from your workspace</p>
+                    <p className="font-display text-[13px] font-extrabold text-ink">Live API status</p>
+                    <p className="text-[10.5px] text-ink-faint">FastAPI · SQLite · OpenStreetMap</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setNotifications((current) => current.map((item) => ({ ...item, read: true })))
-                    }
-                    className="inline-flex items-center gap-1 text-[10px] font-bold text-brand-700 transition-colors hover:text-brand-900"
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em]',
+                      statusTone[status],
+                    )}
                   >
-                    <CheckCheck className="h-3 w-3" />
-                    Mark read
-                  </button>
+                    {status === 'ok' ? (
+                      <CheckCircle2 className="h-3 w-3" />
+                    ) : (
+                      <TriangleAlert className="h-3 w-3" />
+                    )}
+                    {status === 'ok' ? 'Connected' : status === 'degraded' ? 'Partial' : 'Offline'}
+                  </span>
                 </div>
-                <div className="p-1.5">
-                  {notifications.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        setNotifications((current) =>
-                          current.map((entry) => (entry.id === item.id ? { ...entry, read: true } : entry)),
-                        )
-                        setNotificationsOpen(false)
-                        navigate(item.to)
-                      }}
-                      className={cn(
-                        'flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2.5 text-left transition-colors hover:bg-ink/[0.035]',
-                        !item.read && 'bg-brand-50/40',
-                      )}
-                    >
-                      <span className={cn('mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border', item.tone)}>
-                        <item.icon className="h-3.5 w-3.5" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-start justify-between gap-2">
-                          <span className="text-[11.5px] font-bold leading-snug text-ink">{item.title}</span>
-                          {!item.read && <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />}
-                        </span>
-                        <span className="mt-0.5 block text-[10.5px] leading-relaxed text-ink-mute">{item.detail}</span>
-                        <span className="mt-1 block text-[9px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
-                          {item.time}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
+                <div className="space-y-2.5 p-4 text-[11px]">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-ink-mute">Sources loaded</span>
+                    <span className="tabular font-bold text-ink">
+                      {loadedSources}/{totalSources}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-ink-mute">Mapped businesses</span>
+                    <span className="tabular font-bold text-ink">{formatNumber(businessCount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-ink-mute">Database ready</span>
+                    <span className="font-bold text-ink">{health?.database_ready ? 'Yes' : 'No'}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-ink-mute">NVIDIA assistant</span>
+                    <span className="inline-flex items-center gap-1 font-bold text-ink">
+                      <Sparkles className="h-3 w-3 text-brand-600" />
+                      {assistantConfigured ? 'Configured' : 'Not configured'}
+                    </span>
+                  </div>
+                  {health?.sources?.failed > 0 && (
+                    <p className="rounded-lg border border-gold-200/70 bg-gold-50/60 px-2.5 py-2 text-[10px] font-medium leading-relaxed text-gold-800">
+                      {health.sources.failed} source(s) reported a failed latest import.
+                    </p>
+                  )}
                 </div>
-                <div className="border-t border-line/70 px-4 py-2.5 text-[9.5px] font-medium text-ink-faint">
-                  Illustrative signals from demo market data.
+                <div className="border-t border-line/70 px-4 py-2.5 text-[9.5px] font-medium leading-relaxed text-ink-faint">
+                  Mapped POIs are community data, not a verified business register.
                 </div>
               </div>
             )}
@@ -220,19 +203,13 @@ export function Topbar({ onOpenMenu, onOpenSearch }) {
 
           <div className="mx-1 hidden h-6 w-px bg-line sm:block" />
 
-          <div className="flex items-center gap-2.5">
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded-full text-[10.5px] font-extrabold text-white"
-              style={{
-                background: 'linear-gradient(140deg, #6d6ae4, #35328c)',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.35), 0 4px 10px -6px rgba(47,43,119,0.6)',
-              }}
-            >
-              AM
-            </div>
-            <div className="hidden leading-tight xl:block">
-              <p className="text-[11.5px] font-bold text-ink">Aarav Mehta</p>
-              <p className="text-[9.5px] font-medium text-ink-faint">Analyst</p>
+          <div className="hidden items-center gap-2 rounded-xl border border-line/70 bg-white/55 px-2.5 py-1.5 lg:flex">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
+              <Database className="h-3.5 w-3.5" />
+            </span>
+            <div className="leading-tight">
+              <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-ink-faint">Local session</p>
+              <p className="text-[10.5px] font-semibold text-ink">No account required</p>
             </div>
           </div>
         </div>

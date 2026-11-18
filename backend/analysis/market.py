@@ -81,6 +81,61 @@ def list_localities(connection: Any) -> list[dict[str, Any]]:
     ]
 
 
+def nearest_locality(
+    connection: Any,
+    latitude: float,
+    longitude: float,
+) -> dict[str, Any] | None:
+    localities = list_localities(connection)
+    if not localities:
+        return None
+    nearest = min(
+        localities,
+        key=lambda item: haversine_km(
+            latitude,
+            longitude,
+            item["latitude"],
+            item["longitude"],
+        ),
+    )
+    result = dict(nearest)
+    result["distance_m"] = round(
+        haversine_km(
+            latitude,
+            longitude,
+            nearest["latitude"],
+            nearest["longitude"],
+        )
+        * 1000.0,
+        1,
+    )
+    return result
+
+
+def get_business(connection: Any, osm_id: str) -> dict[str, Any] | None:
+    row = connection.execute(
+        """
+        SELECT osm_id, name, name_status, category_id, category_name, subtype,
+               osm_key, osm_value, latitude, longitude, ward_id, inside_ghmc
+        FROM businesses
+        WHERE osm_id = ?
+        """,
+        (osm_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    business = _row_to_dict(row)
+    business["inside_ghmc"] = bool(business["inside_ghmc"])
+    return business
+
+
+def get_business_or_raise(connection: Any, osm_id: str) -> dict[str, Any]:
+    business = get_business(connection, osm_id)
+    if business is None:
+        raise ValueError(f"Unknown business: {osm_id}")
+    return business
+
+
 def _load_businesses(connection: Any) -> list[dict[str, Any]]:
     return [
         _row_to_dict(row)
@@ -101,6 +156,18 @@ def _load_points(connection: Any, table: str) -> list[dict[str, Any]]:
             f"SELECT latitude, longitude FROM {table}"
         ).fetchall()
     ]
+
+
+def _load_analysis_sources(connection: Any) -> dict[str, Any]:
+    return {
+        "businesses": _load_businesses(connection),
+        "localities": list_localities(connection),
+        "city_counts": city_category_counts(connection),
+        "circle_totals": _circle_totals(connection),
+        "bus_stops": _load_points(connection, "bus_stops"),
+        "metro_stations": _load_points(connection, "metro_stations"),
+        "school_counts": _school_counts_by_ward(connection),
+    }
 
 
 def city_category_counts(connection: Any) -> dict[str, dict[str, int]]:
@@ -201,10 +268,20 @@ def _selection_context(
     bus_stops: list[dict[str, Any]],
     metro_stations: list[dict[str, Any]],
     school_counts: dict[int, int],
+    analysis_center: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     radius_km = radius_m / 1000.0
-    latitude = locality["latitude"]
-    longitude = locality["longitude"]
+    center = analysis_center or {
+        "type": "locality_reference_point",
+        "label": locality["name"],
+        "latitude": locality["latitude"],
+        "longitude": locality["longitude"],
+        "nearest_locality_id": locality["id"],
+        "nearest_locality_name": locality["name"],
+        "distance_to_nearest_locality_center_m": 0.0,
+    }
+    latitude = float(center["latitude"])
+    longitude = float(center["longitude"])
     area_km2 = math.pi * radius_km**2
 
     selected_count = 0
@@ -383,13 +460,32 @@ def _selection_context(
         },
         "catchment": {
             "type": "circular_radius",
-            "center_kind": "approximate locality reference point",
+            "center_kind": (
+                "business mapped coordinate"
+                if center["type"] == "business_mapped_coordinate"
+                else "approximate locality reference point"
+            ),
+            "center_label": center["label"],
+            "center_latitude": round(latitude, 6),
+            "center_longitude": round(longitude, 6),
             "radius_m": radius_m,
             "radius_km": radius_km,
             "area_km2": round(area_km2, 3),
             "overlap_disclosure": (
                 "Catchments may overlap. Do not sum locality counts as unique city totals."
             ),
+        },
+        "analysis_center": {
+            "type": center["type"],
+            "label": center["label"],
+            "latitude": round(latitude, 6),
+            "longitude": round(longitude, 6),
+            "nearest_locality_id": center.get("nearest_locality_id"),
+            "nearest_locality_name": center.get("nearest_locality_name"),
+            "distance_to_nearest_locality_center_m": center.get(
+                "distance_to_nearest_locality_center_m"
+            ),
+            "osm_id": center.get("osm_id"),
         },
         "mapped_poi_count": selected_count,
         "named_poi_count": selected_named,
@@ -457,6 +553,58 @@ def _selection_context(
     }
 
 
+def _locality_analysis_center(locality: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "type": "locality_reference_point",
+        "label": locality["name"],
+        "latitude": locality["latitude"],
+        "longitude": locality["longitude"],
+        "nearest_locality_id": locality["id"],
+        "nearest_locality_name": locality["name"],
+        "distance_to_nearest_locality_center_m": 0.0,
+    }
+
+
+def _point_analysis_center(
+    business: dict[str, Any],
+    nearest: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "type": "business_mapped_coordinate",
+        "label": business.get("name") or "Unnamed mapped business",
+        "latitude": business["latitude"],
+        "longitude": business["longitude"],
+        "nearest_locality_id": nearest["id"],
+        "nearest_locality_name": nearest["name"],
+        "distance_to_nearest_locality_center_m": nearest["distance_m"],
+        "osm_id": business["osm_id"],
+    }
+
+
+def _context_from_sources(
+    connection: Any,
+    locality: dict[str, Any],
+    category_id: str,
+    radius_m: int,
+    sources: dict[str, Any],
+    center: dict[str, Any],
+) -> dict[str, Any]:
+    return _selection_context(
+        connection,
+        locality,
+        category_id,
+        radius_m,
+        sources["businesses"],
+        sources["localities"],
+        sources["city_counts"],
+        sources["circle_totals"],
+        sources["bus_stops"],
+        sources["metro_stations"],
+        sources["school_counts"],
+        analysis_center=center,
+    )
+
+
 def locality_market_metrics(
     connection: Any,
     locality_id: str,
@@ -466,26 +614,99 @@ def locality_market_metrics(
     radius = validate_radius(radius_m)
     category = get_category_or_raise(category_id)
     locality = get_locality_or_raise(connection, locality_id)
-    businesses = _load_businesses(connection)
-    localities = list_localities(connection)
-    city_counts = city_category_counts(connection)
-    circle_totals = _circle_totals(connection)
-    bus_stops = _load_points(connection, "bus_stops")
-    metro_stations = _load_points(connection, "metro_stations")
-    school_counts = _school_counts_by_ward(connection)
-    return _selection_context(
+    sources = _load_analysis_sources(connection)
+    return _context_from_sources(
         connection,
         locality,
         category["id"],
         radius,
-        businesses,
-        localities,
-        city_counts,
-        circle_totals,
-        bus_stops,
-        metro_stations,
-        school_counts,
+        sources,
+        _locality_analysis_center(locality),
     )
+
+
+def all_locality_metrics(
+    connection: Any,
+    category_id: str | None = None,
+    radius_m: int | None = None,
+) -> dict[str, Any]:
+    radius = validate_radius(radius_m)
+    category = get_category_or_raise(category_id)
+    sources = _load_analysis_sources(connection)
+    snapshots = [
+        _context_from_sources(
+            connection,
+            locality,
+            category["id"],
+            radius,
+            sources,
+            _locality_analysis_center(locality),
+        )
+        for locality in sources["localities"]
+    ]
+    return {
+        "category": {"id": category["id"], "name": category["name"]},
+        "radius_m": radius,
+        "locality_count": len(snapshots),
+        "localities": snapshots,
+        "data_notes": [
+            "Locality centres are approximate and catchments overlap.",
+            "Counts are mapped OpenStreetMap POIs, not a verified business register.",
+        ],
+    }
+
+
+def business_market_metrics(
+    connection: Any,
+    osm_id: str,
+    category_id: str | None = None,
+    radius_m: int | None = None,
+) -> dict[str, Any]:
+    radius = validate_radius(radius_m)
+    business = get_business_or_raise(connection, osm_id)
+    if business["latitude"] is None or business["longitude"] is None:
+        raise ValueError("This business has no usable mapped coordinates.")
+    selected_category_id = category_id or business.get("category_id")
+    if not selected_category_id:
+        raise ValueError("This business has no supported category.")
+    category = get_category_or_raise(selected_category_id)
+    nearest = nearest_locality(
+        connection,
+        business["latitude"],
+        business["longitude"],
+    )
+    if nearest is None:
+        raise RuntimeError("No locality reference points are available.")
+    sources = _load_analysis_sources(connection)
+    sources["businesses"] = [
+        item for item in sources["businesses"] if item["osm_id"] != osm_id
+    ]
+    snapshot = _context_from_sources(
+        connection,
+        nearest,
+        category["id"],
+        radius,
+        sources,
+        _point_analysis_center(business, nearest),
+    )
+    snapshot["business"] = {
+        "osm_id": business["osm_id"],
+        "name": business["name"],
+        "name_status": business["name_status"],
+        "category_id": business["category_id"],
+        "category_name": business["category_name"],
+        "latitude": round(business["latitude"], 6),
+        "longitude": round(business["longitude"], 6),
+        "inside_ghmc": business["inside_ghmc"],
+        "nearest_locality_id": nearest["id"],
+        "nearest_locality_name": nearest["name"],
+        "nearest_locality_distance_m": nearest["distance_m"],
+        "coordinate_note": (
+            "The business location is its OpenStreetMap mapped coordinate. "
+            "Locality context uses the nearest reference-point centre."
+        ),
+    }
+    return snapshot
 
 
 def city_overview(
