@@ -177,7 +177,7 @@ export function FinancialFeasibility() {
     () =>
       costs
         ? [
-            { name: 'Rent', value: costs.monthly_rent, color: '#4F46E5' },
+            { name: 'Rent', value: costs.monthly_rent, color: '#0A0D12' },
             { name: 'People', value: costs.staff_expenses, color: '#0F9D92' },
             { name: 'Other operating', value: costs.other_monthly_expenses, color: '#DC6803' },
           ]

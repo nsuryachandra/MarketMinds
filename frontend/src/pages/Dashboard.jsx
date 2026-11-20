@@ -86,40 +86,40 @@ export function Dashboard() {
         marketApi.getOverview(shared, { signal }),
         isBusinessMode && business
           ? marketApi.getBusinessContext(
-              { osm_id: business.osm_id, ...shared },
-              { signal },
-            )
+            { osm_id: business.osm_id, ...shared },
+            { signal },
+          )
           : marketApi.getLocalityAnalysis(
-              { locality: localityId, ...shared },
-              { signal },
-            ),
+            { locality: localityId, ...shared },
+            { signal },
+          ),
         isBusinessMode && business
           ? marketApi.getBusinessCompetitors(
-              { osm_id: business.osm_id, ...shared, limit: 50 },
-              { signal },
-            )
+            { osm_id: business.osm_id, ...shared, limit: 50 },
+            { signal },
+          )
           : marketApi.getCompetitors(
-              { locality: localityId, ...shared, limit: 50 },
-              { signal },
-            ),
+            { locality: localityId, ...shared, limit: 50 },
+            { signal },
+          ),
         marketApi.getTrends({ category: categoryId }, { signal }),
         isBusinessMode && business
           ? marketApi.estimateBusinessRisk(
-              {
-                osm_id: business.osm_id,
-                category: categoryId,
-                radius_m: radius,
-              },
-              { signal },
-            )
+            {
+              osm_id: business.osm_id,
+              category: categoryId,
+              radius_m: radius,
+            },
+            { signal },
+          )
           : marketApi.estimateRisk(
-              {
-                locality: localityId,
-                category: categoryId,
-                radius_m: radius,
-              },
-              { signal },
-            ),
+            {
+              locality: localityId,
+              category: categoryId,
+              radius_m: radius,
+            },
+            { signal },
+          ),
       ])
       return { overview, snapshot, competitors, trends, risk }
     },
@@ -247,7 +247,7 @@ export function Dashboard() {
 
       <div className="grid gap-4 xl:grid-cols-[1.55fr_1fr]">
         <GlassPanel className="relative overflow-hidden p-5 lg:p-6">
-          <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-brand-500/[0.07] blur-2xl" />
+          <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-emerald-500/[0.04] blur-2xl" />
           <div className="relative flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -261,14 +261,14 @@ export function Dashboard() {
                     : ''}
                 </span>
               </div>
-              <div className="mt-1.5 flex items-center gap-2.5">
+              <div className="mt-2 flex items-center gap-2.5">
                 <CategoryGlyph icon={category?.icon} tint={category?.tint} size="md" />
                 <div>
                   <h2 className="font-display text-[22px] font-extrabold leading-tight tracking-[-0.035em] text-ink">
                     {category?.name}
                   </h2>
                   <p className="flex items-center gap-1 text-[11px] font-medium text-ink-mute">
-                    <MapPin className="h-3 w-3 text-brand-500" />
+                    <MapPin className="h-3 w-3 text-[#C8792C]" />
                     {isBusinessMode ? business?.nearest_locality?.name : locality?.name} · Hyderabad
                   </p>
                 </div>
@@ -277,87 +277,77 @@ export function Dashboard() {
             <Badge tone="neutral">Market data</Badge>
           </div>
 
-          <div className="relative mt-5 grid gap-4 sm:grid-cols-[auto_1fr] sm:items-end">
-            <div>
+          <div className="relative mt-6 grid gap-6 sm:grid-cols-[210px_1fr] sm:items-center">
+            {/* Opportunity Index Hero Gauge */}
+            <div className="rounded-2xl border border-line/70 bg-[#FBFCFE] p-4">
               <div className="flex items-end gap-2.5">
-                <span className="tabular font-display text-[48px] font-extrabold leading-[0.95] tracking-[-0.055em] text-ink">
+                <span className="tabular font-display text-[46px] font-extrabold leading-[0.95] tracking-[-0.055em] text-ink">
                   {scores?.opportunity_index ?? '—'}
                 </span>
                 <span
                   className={cn(
-                    'mb-1.5 inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[10.5px] font-bold',
+                    'mb-1 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold',
                     scores?.opportunity_index >= 60
                       ? 'bg-jade-50 text-jade-700'
                       : 'bg-gold-50 text-gold-700',
                   )}
                 >
                   <Sparkles className="h-3 w-3" />
-                  relative index
+                  benchmark
                 </span>
               </div>
-              <p className="mt-1.5 text-[11.5px] font-semibold text-ink-mute">
+              <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.06em] text-ink-mute">
                 Opportunity index / 100
               </p>
               <Meter
                 value={scores?.opportunity_index ?? 0}
                 tone={scoreTone(scores?.opportunity_index)}
-                className="mt-2 w-40"
+                className="mt-2.5 w-full"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-              <div className="rounded-xl border border-line/60 bg-white/50 px-3 py-2.5">
-                <p className="label">Mapped places</p>
-                <p className="tabular mt-1 font-display text-[18px] font-bold text-ink">
-                  {formatNumber(snapshot?.mapped_poi_count ?? 0)}
+            {/* De-cluttered 4-Metric Unified Strip */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-line/70 bg-[#FBFCFE] p-3">
+                <p className="label">Catchment Supply</p>
+                <p className="tabular mt-1 font-display text-[19px] font-bold text-ink">
+                  {formatNumber(snapshot?.mapped_poi_count ?? 0)} Places
                 </p>
-                <p className="text-[9px] font-medium text-ink-faint">in selected catchment</p>
-              </div>
-              <div className="rounded-xl border border-line/60 bg-white/50 px-3 py-2.5">
-                <p className="label">Citywide</p>
-                <p className="tabular mt-1 font-display text-[18px] font-extrabold text-ink">
-                  {formatNumber(cityCategory?.mapped_poi_count ?? 0)}
-                </p>
-                <p className="text-[9px] font-medium text-ink-faint">
-                  {cityCategory?.share_of_mapped_pct ?? '—'}% of mapped places
+                <p className="mt-0.5 text-[10px] font-medium text-ink-faint">
+                  {cityCategory?.share_of_mapped_pct ?? '—'}% of city mapped supply
                 </p>
               </div>
-              <div className="rounded-xl border border-line/60 bg-white/50 px-3 py-2.5">
-                <p className="label">Competitors</p>
-                <p className="tabular mt-1 font-display text-[18px] font-extrabold text-ink">
-                  {formatNumber(competitors?.competitor_count ?? 0)}
-                </p>
-                <p className="text-[9px] font-medium text-ink-faint">mapped, same category</p>
-              </div>
-            </div>
-          </div>
 
-          <div className="relative mt-5 rounded-xl border border-line/60 bg-white/45 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="label">Competition context</p>
-                <p className="mt-0.5 text-[10.5px] font-medium text-ink-mute">
+              <div className="rounded-xl border border-line/70 bg-[#FBFCFE] p-3">
+                <p className="label">Direct Competitors</p>
+                <p className="tabular mt-1 font-display text-[19px] font-bold text-ink">
+                  {formatNumber(competitors?.competitor_count ?? 0)} Mapped
+                </p>
+                <p className="mt-0.5 text-[10px] font-medium text-ink-faint">
                   {competitors?.unnamed_competitor_count
-                    ? `${formatNumber(competitors.unnamed_competitor_count)} unnamed mapped outlets in this set`
-                    : 'Every competitor in this set has a mapped name'}
+                    ? `${formatNumber(competitors.unnamed_competitor_count)} unnamed in set`
+                    : 'All named outlets'}
                 </p>
               </div>
-              <Badge tone="neutral">
-                Concentration {snapshot?.category_mix_hhi ?? '—'}
-              </Badge>
-            </div>
-            <div className="mt-2.5 grid grid-cols-3 gap-2 text-[10px]">
-              <div className="rounded-lg bg-white/60 px-2.5 py-2">
-                <p className="font-bold text-ink">{scores?.competition_index ?? '—'}</p>
-                <p className="text-ink-faint">competition index</p>
+
+              <div className="rounded-xl border border-line/70 bg-[#FBFCFE] p-3">
+                <p className="label">Transit Access</p>
+                <p className="tabular mt-1 font-display text-[19px] font-bold text-ink">
+                  {formatNumber(access?.bus_stops_within_radius ?? 0)} Bus · {formatNumber(access?.metro_stations_within_radius ?? 0)} Metro
+                </p>
+                <p className="mt-0.5 text-[10px] font-medium text-ink-faint">
+                  Access score {scores?.access_index ?? '—'}/100
+                </p>
               </div>
-              <div className="rounded-lg bg-white/60 px-2.5 py-2">
-                <p className="font-bold text-ink">{formatNumber(access?.bus_stops_within_radius ?? 0)}</p>
-                <p className="text-ink-faint">bus stops in radius</p>
-              </div>
-              <div className="rounded-lg bg-white/60 px-2.5 py-2">
-                <p className="font-bold text-ink">{formatNumber(access?.metro_stations_within_radius ?? 0)}</p>
-                <p className="text-ink-faint">metro stations</p>
+
+              <div className="rounded-xl border border-line/70 bg-[#FBFCFE] p-3">
+                <p className="label">Concentration</p>
+                <p className="tabular mt-1 font-display text-[19px] font-bold text-ink">
+                  HHI {snapshot?.category_mix_hhi ?? '—'}
+                </p>
+                <p className="mt-0.5 text-[10px] font-medium text-ink-faint">
+                  Competition idx {scores?.competition_index ?? '—'}/100
+                </p>
               </div>
             </div>
           </div>
@@ -448,7 +438,7 @@ export function Dashboard() {
                   {donutData.map((entry) => (
                     <Cell
                       key={entry.id}
-                      fill={entry.id === 'other' ? '#C9D2E3' : tintHex[entry.tint] ?? '#4F46E5'}
+                      fill={entry.id === 'other' ? '#EAE5DD' : tintHex[entry.tint] ?? '#C8792C'}
                     />
                   ))}
                 </Bar>
@@ -476,7 +466,7 @@ export function Dashboard() {
                 />
                 <YAxis tick={{ fontSize: 10, fill: '#667085', fontWeight: 600 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<ChartTooltip formatter={(value) => formatNumber(value)} />} />
-                <Bar dataKey="mapped_poi_count" name="Mapped places" radius={[6, 6, 0, 0]} fill="#4F46E5" barSize={28} />
+                <Bar dataKey="mapped_poi_count" name="Mapped places" radius={[6, 6, 0, 0]} fill="#C8792C" barSize={28} />
               </BarChart>
             </ResponsiveContainer>
           </div>

@@ -237,22 +237,71 @@ SOURCE_DEFINITIONS: list[dict[str, Any]] = [
 SOURCE_BY_ID = {source["source_id"]: source for source in SOURCE_DEFINITIONS}
 
 LOCALITY_REFERENCE_POINTS: list[dict[str, Any]] = [
+    # Core Central & West Commercial
     {"id": "banjara-hills", "name": "Banjara Hills", "zone": "Central", "latitude": 17.4177464, "longitude": 78.4399014},
     {"id": "jubilee-hills", "name": "Jubilee Hills", "zone": "Central", "latitude": 17.4308362, "longitude": 78.4102882},
     {"id": "gachibowli", "name": "Gachibowli", "zone": "West", "latitude": 17.4436222, "longitude": 78.3519638},
     {"id": "hitec-city", "name": "HITEC City", "zone": "West", "latitude": 17.4490055, "longitude": 78.3831376},
     {"id": "kondapur", "name": "Kondapur", "zone": "West", "latitude": 17.4587912, "longitude": 78.3730556},
+    {"id": "madhapur", "name": "Madhapur", "zone": "West", "latitude": 17.4483, "longitude": 78.3915},
     {"id": "kukatpally", "name": "Kukatpally", "zone": "North-West", "latitude": 17.4930841, "longitude": 78.4054408},
+    {"id": "kphb-colony", "name": "KPHB Colony", "zone": "North-West", "latitude": 17.4935, "longitude": 78.3970},
     {"id": "miyapur", "name": "Miyapur", "zone": "North-West", "latitude": 17.4981608, "longitude": 78.3567628},
-    {"id": "secunderabad", "name": "Secunderabad", "zone": "North", "latitude": 17.4337246, "longitude": 78.5006827},
-    {"id": "begumpet", "name": "Begumpet", "zone": "Central", "latitude": 17.4461950, "longitude": 78.4630160},
+    {"id": "chandanagar", "name": "Chandanagar", "zone": "North-West", "latitude": 17.4930, "longitude": 78.3280},
+    {"id": "nizampet", "name": "Nizampet", "zone": "North-West", "latitude": 17.5140, "longitude": 78.3795},
+
+    # Central Transit & Commercial Corridor
     {"id": "ameerpet", "name": "Ameerpet", "zone": "Central", "latitude": 17.4375012, "longitude": 78.4482505},
-    {"id": "charminar", "name": "Charminar", "zone": "Old City", "latitude": 17.3616024, "longitude": 78.4746421},
-    {"id": "lb-nagar", "name": "LB Nagar", "zone": "East", "latitude": 17.3501617, "longitude": 78.5510938},
-    {"id": "uppal", "name": "Uppal", "zone": "East", "latitude": 17.4025091, "longitude": 78.5612562},
+    {"id": "sr-nagar", "name": "SR Nagar", "zone": "Central", "latitude": 17.4430, "longitude": 78.4445},
+    {"id": "srinagar-colony", "name": "Srinagar Colony", "zone": "Central", "latitude": 17.4285, "longitude": 78.4355},
+    {"id": "moti-nagar", "name": "Moti Nagar", "zone": "Central-West", "latitude": 17.4525, "longitude": 78.4215},
+    {"id": "erragadda", "name": "Erragadda", "zone": "Central-West", "latitude": 17.4550, "longitude": 78.4330},
+    {"id": "sanath-nagar", "name": "Sanath Nagar", "zone": "North-West", "latitude": 17.4580, "longitude": 78.4410},
+    {"id": "begumpet", "name": "Begumpet", "zone": "Central", "latitude": 17.4461950, "longitude": 78.4630160},
+    {"id": "panjagutta", "name": "Panjagutta", "zone": "Central", "latitude": 17.4290, "longitude": 78.4505},
+    {"id": "somajiguda", "name": "Somajiguda", "zone": "Central", "latitude": 17.4265, "longitude": 78.4570},
+    {"id": "khairatabad", "name": "Khairatabad", "zone": "Central", "latitude": 17.4130, "longitude": 78.4580},
+    {"id": "masab-tank", "name": "Masab Tank", "zone": "Central", "latitude": 17.4050, "longitude": 78.4510},
+
+    # Tech & Expansion Spine (West & South-West)
+    {"id": "financial-district", "name": "Financial District", "zone": "West", "latitude": 17.4150, "longitude": 78.3490},
     {"id": "kokapet", "name": "Kokapet", "zone": "West", "latitude": 17.3948624, "longitude": 78.3365214},
     {"id": "manikonda", "name": "Manikonda", "zone": "West", "latitude": 17.3999951, "longitude": 78.3861689},
+    {"id": "nallagandla", "name": "Nallagandla", "zone": "West", "latitude": 17.4720, "longitude": 78.3120},
+    {"id": "lingampally", "name": "Lingampally", "zone": "West", "latitude": 17.4890, "longitude": 78.3180},
+    {"id": "film-nagar", "name": "Film Nagar", "zone": "Central-West", "latitude": 17.4160, "longitude": 78.4060},
+    {"id": "tolichowki", "name": "Tolichowki", "zone": "West", "latitude": 17.4020, "longitude": 78.4110},
+    {"id": "mehdipatnam", "name": "Mehdipatnam", "zone": "South-West", "latitude": 17.3940, "longitude": 78.4380},
+    {"id": "attapur", "name": "Attapur", "zone": "South-West", "latitude": 17.3680, "longitude": 78.4340},
+
+    # North & Secunderabad Cluster
+    {"id": "secunderabad", "name": "Secunderabad", "zone": "North", "latitude": 17.4337246, "longitude": 78.5006827},
+    {"id": "bowenpally", "name": "Bowenpally", "zone": "North", "latitude": 17.4730, "longitude": 78.4870},
+    {"id": "alwal", "name": "Alwal", "zone": "North", "latitude": 17.5020, "longitude": 78.5080},
+    {"id": "malkajgiri", "name": "Malkajgiri", "zone": "North", "latitude": 17.4510, "longitude": 78.5305},
+    {"id": "balanagar", "name": "Balanagar", "zone": "North", "latitude": 17.4680, "longitude": 78.4520},
+    {"id": "jeedimetla", "name": "Jeedimetla", "zone": "North", "latitude": 17.5180, "longitude": 78.4550},
+
+    # East & North-East Industrial/Transit Hubs
+    {"id": "tarnaka", "name": "Tarnaka", "zone": "North-East", "latitude": 17.4280, "longitude": 78.5340},
+    {"id": "habsiguda", "name": "Habsiguda", "zone": "East", "latitude": 17.4170, "longitude": 78.5440},
+    {"id": "uppal", "name": "Uppal", "zone": "East", "latitude": 17.4025091, "longitude": 78.5612562},
+    {"id": "amberpet", "name": "Amberpet", "zone": "East", "latitude": 17.3970, "longitude": 78.5140},
+    {"id": "lb-nagar", "name": "LB Nagar", "zone": "East", "latitude": 17.3501617, "longitude": 78.5510938},
     {"id": "dilsukhnagar", "name": "Dilsukhnagar", "zone": "South-East", "latitude": 17.3684433, "longitude": 78.5228597},
+
+    # Heritage, Civic & Old City
+    {"id": "himayatnagar", "name": "Himayatnagar", "zone": "Central", "latitude": 17.4045, "longitude": 78.4870},
+    {"id": "abids", "name": "Abids", "zone": "Central", "latitude": 17.3910, "longitude": 78.4740},
+    {"id": "koti", "name": "Koti", "zone": "Central", "latitude": 17.3850, "longitude": 78.4865},
+    {"id": "nampally", "name": "Nampally", "zone": "Central", "latitude": 17.3930, "longitude": 78.4680},
+    {"id": "kachiguda", "name": "Kachiguda", "zone": "Central", "latitude": 17.3920, "longitude": 78.4980},
+    {"id": "narayanaguda", "name": "Narayanaguda", "zone": "Central", "latitude": 17.3965, "longitude": 78.4915},
+    {"id": "chikkadpally", "name": "Chikkadpally", "zone": "Central", "latitude": 17.4040, "longitude": 78.4990},
+    {"id": "musheerabad", "name": "Musheerabad", "zone": "Central-North", "latitude": 17.4210, "longitude": 78.4970},
+    {"id": "charminar", "name": "Charminar", "zone": "Old City", "latitude": 17.3616024, "longitude": 78.4746421},
+    {"id": "malakpet", "name": "Malakpet", "zone": "South-East", "latitude": 17.3750, "longitude": 78.4980},
+    {"id": "santoshnagar", "name": "Santoshnagar", "zone": "South", "latitude": 17.3480, "longitude": 78.5080},
 ]
 
 TREND_COLUMNS = {

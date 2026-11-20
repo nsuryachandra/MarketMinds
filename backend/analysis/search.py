@@ -118,6 +118,45 @@ LOCALITY_ALIASES: dict[str, list[str]] = {
     "miyapur": ["miyapur"],
     "secunderabad": ["secunderabad", "secbad"],
     "uppal": ["uppal"],
+    # Expanded Hyderabad localities
+    "moti-nagar": ["moti nagar", "mothinagar", "mothi nagar", "motinagar", "moti-nagar"],
+    "srinagar-colony": ["srinagar colony", "sri nagar colony", "srinagar", "sri nagar", "srinagarcolony"],
+    "sr-nagar": ["sr nagar", "s r nagar", "sanjeeva reddy nagar", "srnagar", "sanjeevareddynagar"],
+    "madhapur": ["madhapur"],
+    "kphb-colony": ["kphb colony", "kphb", "kukatpally housing board", "kphb phase 1", "kphb phase 2"],
+    "panjagutta": ["panjagutta", "punjagutta", "panja gutta", "punja gutta"],
+    "somajiguda": ["somajiguda", "somajiguda circle"],
+    "khairatabad": ["khairatabad", "khairtabad"],
+    "masab-tank": ["masab tank", "masabtank"],
+    "financial-district": ["financial district", "nanakramguda", "waverock"],
+    "mehdipatnam": ["mehdipatnam", "mehdi patnam"],
+    "tolichowki": ["tolichowki", "toli chowki"],
+    "film-nagar": ["film nagar", "filmnagar"],
+    "sanath-nagar": ["sanath nagar", "sanathnagar"],
+    "erragadda": ["erragadda", "erra gadda"],
+    "alwal": ["alwal"],
+    "malkajgiri": ["malkajgiri"],
+    "tarnaka": ["tarnaka"],
+    "habsiguda": ["habsiguda"],
+    "himayatnagar": ["himayatnagar", "himayat nagar"],
+    "abids": ["abids", "abid road"],
+    "koti": ["koti"],
+    "kachiguda": ["kachiguda", "kacheguda"],
+    "nampally": ["nampally"],
+    "chikkadpally": ["chikkadpally", "chikkadapally"],
+    "narayanaguda": ["narayanaguda", "narayan guda"],
+    "musheerabad": ["musheerabad", "mushirabad"],
+    "attapur": ["attapur"],
+    "bowenpally": ["bowenpally", "bowen pally"],
+    "amberpet": ["amberpet", "amber pet"],
+    "malakpet": ["malakpet", "malak pet"],
+    "santoshnagar": ["santoshnagar", "santosh nagar"],
+    "chandanagar": ["chandanagar", "chanda nagar"],
+    "nallagandla": ["nallagandla"],
+    "nizampet": ["nizampet", "nizampet village"],
+    "balanagar": ["balanagar", "bala nagar"],
+    "jeedimetla": ["jeedimetla", "jeedimetla ida"],
+    "lingampally": ["lingampally", "bhel", "serilingampally"],
 }
 
 
@@ -638,7 +677,7 @@ def interpret_search(
                     "type": "locality",
                     "message": (
                         f'We could not match "{locality_match["unknown_phrase"]}" to '
-                        "one of the 16 supported localities. Choose a locality to continue."
+                        "one of the supported localities. Choose a locality to continue."
                     ),
                     "options": _locality_options(connection),
                 },
@@ -661,7 +700,7 @@ def interpret_search(
                     "type": "locality",
                     "message": (
                         "Which locality should this analysis use? "
-                        "Choose one of the 16 supported localities."
+                        "Choose one of the supported localities."
                     ),
                     "options": _locality_options(connection),
                 },

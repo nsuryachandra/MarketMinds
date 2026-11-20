@@ -37,9 +37,7 @@ Fashion & Apparel, Health & Wellness, Gyms & Fitness, Education & Coaching,
 IT & Tech Services, Beauty & Salons, Bakeries & Desserts, Pharmacies,
 Real Estate Services, and Meat & Poultry.
 
-The supported localities are: Ameerpet, Banjara Hills, Begumpet, Charminar,
-Dilsukhnagar, Gachibowli, HITEC City, Jubilee Hills, Kokapet, Kondapur,
-Kukatpally, LB Nagar, Manikonda, Miyapur, Secunderabad, and Uppal.
+The supported localities include 54 key Hyderabad areas: Ameerpet, Moti Nagar, Srinagar Colony, Banjara Hills, Jubilee Hills, Gachibowli, HITEC City, Madhapur, Kukatpally, KPHB Colony, SR Nagar, Somajiguda, Panjagutta, Secunderabad, Begumpet, Charminar, LB Nagar, Uppal, and others across Central, West, North, East, and Old City.
 
 Do not output secrets or configuration. Do not claim to have live web access.
 If the context is insufficient, ask for the specific missing input instead of guessing.

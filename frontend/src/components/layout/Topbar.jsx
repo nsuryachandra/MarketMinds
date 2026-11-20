@@ -33,10 +33,10 @@ function ContextTrigger({ onOpen, open, category, locality, business, radius, is
       aria-label={`Change analysis context: ${title || 'market analysis'}`}
       className={cn(
         'group flex min-w-0 items-center gap-2.5 rounded-lg border border-line bg-white p-2 text-left transition-all duration-200 hover:border-line-strong hover:shadow-soft sm:px-3 sm:py-1.5',
-        open && 'border-brand-200 bg-brand-50/40 ring-4 ring-brand-500/10',
+        open && 'border-blue-400 bg-blue-50/50 ring-4 ring-blue-500/10',
       )}
     >
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-brand-100 bg-brand-50 text-brand-700">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-amber-200 bg-amber-50/70 text-[#C8792C]">
         {isBusinessMode ? <Store className="h-3.5 w-3.5" /> : <MapPin className="h-3.5 w-3.5" />}
       </span>
       <span className="hidden min-w-0 leading-tight sm:block">
@@ -53,7 +53,7 @@ function ContextTrigger({ onOpen, open, category, locality, business, radius, is
       <ChevronDown
         className={cn(
           'ml-0.5 h-3.5 w-3.5 shrink-0 text-ink-faint transition-transform duration-200 sm:block',
-          open && 'rotate-180 text-brand-600',
+          open && 'rotate-180 text-[#C8792C]',
         )}
       />
     </button>
@@ -88,7 +88,7 @@ function AnalysisPopover({
             Updates every workspace page at once.
           </p>
         </div>
-        <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
+        <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-stone-100 text-stone-900">
           <SlidersHorizontal className="h-3.5 w-3.5" />
         </span>
       </div>
@@ -162,7 +162,7 @@ function AnalysisPopover({
                   className={cn(
                     'flex h-8 items-center justify-center gap-1 rounded-lg border text-[11px] font-semibold transition-all',
                     selected
-                      ? 'border-brand-200 bg-brand-50 text-brand-800'
+                      ? 'border-[#C8792C] bg-[#C8792C] text-white shadow-xs'
                       : 'border-line bg-white text-ink-mute hover:border-line-strong hover:text-ink',
                   )}
                 >
@@ -293,7 +293,7 @@ export function Topbar({ onOpenMenu, onOpenSearch }) {
             onClick={onOpenSearch}
             className="group hidden h-9 w-[210px] items-center gap-2 rounded-lg border border-line bg-[#FBFCFE] px-3 text-left text-[12px] font-medium text-ink-faint transition-all duration-200 hover:border-line-strong hover:bg-white hover:shadow-soft xl:w-[280px] md:flex"
           >
-            <Search className="h-3.5 w-3.5 text-ink-faint transition-colors group-hover:text-brand-600" />
+            <Search className="h-3.5 w-3.5 text-ink-faint transition-colors group-hover:text-stone-900" />
             <span className="flex-1 truncate">Search markets, localities, businesses</span>
             <span className="flex items-center gap-0.5 rounded border border-line bg-white px-1.5 py-0.5 text-[9px] font-bold text-ink-faint">
               <Command className="h-2.5 w-2.5" />K

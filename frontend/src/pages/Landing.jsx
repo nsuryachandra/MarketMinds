@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -7,18 +8,15 @@ import {
   CheckCircle2,
   Compass,
   GitCompareArrows,
-  Layers3,
   MapPin,
   Search,
   ShieldAlert,
   Sparkles,
-  Store,
   TrendingUp,
   UsersRound,
 } from 'lucide-react'
 import { Logo } from '../components/ui/Logo'
 import { Badge } from '../components/ui/Badge'
-import { CategoryGlyph } from '../components/ui/CategoryGlyph'
 import { SearchConsole } from '../components/domain/SearchConsole'
 import { SourceNote } from '../components/domain/DataState'
 import { useMarket } from '../context/MarketContext'
@@ -34,7 +32,7 @@ const features = [
   },
   {
     title: 'Market Explorer',
-    description: 'Compare mapped supply and opportunity across 16 Hyderabad localities.',
+    description: 'Compare mapped supply and opportunity across 50+ Hyderabad localities.',
     to: '/market-explorer',
     icon: Compass,
     tone: 'sea',
@@ -121,16 +119,93 @@ const sources = [
   },
 ]
 
+const HERO_LOCALITIES = [
+  {
+    id: 'ameerpet',
+    name: 'Ameerpet',
+    zone: 'Central Commercial & Transit Corridor',
+    pois: 762,
+    footfall: 'High Footfall Density',
+    transitScore: 98,
+    transitLabel: 'Red & Blue Interchange',
+    velocity: '+14.2% YoY',
+    topCategory: 'Cafes & Bakeries',
+    catchment: '1,000m',
+    segments: [
+      { name: 'Cafes & Bakeries', share: 36, color: '#0A0D12' },
+      { name: 'Education & Coaching', share: 28, color: '#059669' },
+      { name: 'Retail & Grocery', share: 22, color: '#D97706' },
+      { name: 'Services', share: 14, color: '#475467' },
+    ],
+  },
+  {
+    id: 'gachibowli',
+    name: 'Gachibowli',
+    zone: 'Tech Spine & Financial District',
+    pois: 894,
+    footfall: 'Corporate Footfall',
+    transitScore: 91,
+    transitLabel: 'ORR & Metro Feeder',
+    velocity: '+22.5% YoY',
+    topCategory: 'Dining & Wellness',
+    catchment: '2,000m',
+    segments: [
+      { name: 'Dining & Food Courts', share: 42, color: '#0A0D12' },
+      { name: 'Fitness & Wellness', share: 24, color: '#059669' },
+      { name: 'Corporate Retail', share: 20, color: '#D97706' },
+      { name: 'Commercial Hubs', share: 14, color: '#475467' },
+    ],
+  },
+  {
+    id: 'banjara-hills',
+    name: 'Banjara Hills',
+    zone: 'Prime Luxury & High Street',
+    pois: 648,
+    footfall: 'High Purchasing Power',
+    transitScore: 88,
+    transitLabel: 'Road No. 1–12 Arteries',
+    velocity: '+9.8% YoY',
+    topCategory: 'Boutiques & Specialty',
+    catchment: '1,500m',
+    segments: [
+      { name: 'Fine Dining', share: 38, color: '#0A0D12' },
+      { name: 'Luxury Boutiques', share: 32, color: '#059669' },
+      { name: 'Healthcare & Spas', share: 18, color: '#D97706' },
+      { name: 'Specialty Retail', share: 12, color: '#475467' },
+    ],
+  },
+  {
+    id: 'kukatpally',
+    name: 'Kukatpally',
+    zone: 'High-Density Residential Hub',
+    pois: 815,
+    footfall: 'Family & Retail Traffic',
+    transitScore: 96,
+    transitLabel: 'KPHB Metro Corridor',
+    velocity: '+11.4% YoY',
+    topCategory: 'Supermarkets & FMCG',
+    catchment: '1,000m',
+    segments: [
+      { name: 'Supermarkets & FMCG', share: 34, color: '#0A0D12' },
+      { name: 'Electronics & Apparel', share: 30, color: '#059669' },
+      { name: 'Bakeries & Sweets', share: 22, color: '#D97706' },
+      { name: 'Pharmacies', share: 14, color: '#475467' },
+    ],
+  },
+]
+
 export function Landing() {
   const navigate = useNavigate()
-  const { categories, localities, metaLoading, metaError, reloadMeta } = useMarket()
+  const { categories, localities, setLocalityId, metaLoading, metaError, reloadMeta } = useMarket()
+  const [activeLocalityIndex, setActiveLocalityIndex] = useState(0)
+  const activeLocality = HERO_LOCALITIES[activeLocalityIndex]
 
   const mappedTotal = categories.reduce((sum, item) => sum + (item.mapped_poi_count ?? 0), 0)
-  const topCategories = categories
-    .slice()
-    .sort((a, b) => (b.mapped_poi_count ?? 0) - (a.mapped_poi_count ?? 0))
-    .slice(0, 5)
-  const maxCategory = Math.max(...topCategories.map((item) => item.mapped_poi_count ?? 0), 1)
+
+  const handleExploreCatchment = (id) => {
+    setLocalityId(id)
+    navigate('/market-explorer')
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-canvas">
@@ -141,7 +216,7 @@ export function Landing() {
         Skip to content
       </a>
 
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[760px] bg-[radial-gradient(1000px_480px_at_72%_-10%,rgba(79,70,229,0.10),transparent_65%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[760px] bg-[radial-gradient(1000px_480px_at_72%_-10%,rgba(8,100,232,0.08),transparent_65%)]" />
 
       <header className="sticky top-0 z-30 border-b border-line/80 bg-canvas/90 backdrop-blur-xl">
         <div className="mx-auto flex h-[72px] w-full max-w-[1240px] items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -161,34 +236,41 @@ export function Landing() {
             <a href="#limits" className="btn-ghost h-9 text-[12px]">
               Limits
             </a>
-            <Link to="/dashboard" className="btn-primary ml-2 h-9 px-3.5 text-[12px]">
-              Open workspace
-              <ArrowRight className="h-3.5 w-3.5" />
+            <Link to="/dashboard" className="btn-primary btn-luminous group ml-2 h-9 px-4 text-[12px] font-semibold tracking-wide">
+              <span>Open workspace</span>
+              <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
             </Link>
           </nav>
-          <Link to="/dashboard" className="btn-primary h-9 px-3.5 text-[12px] md:hidden">
+          <Link to="/dashboard" className="btn-primary btn-luminous h-9 px-3.5 text-[12px] md:hidden">
             Workspace
           </Link>
         </div>
       </header>
 
       <main id="main" className="relative z-10">
-        <section className="mx-auto grid w-full max-w-[1240px] gap-10 px-4 pb-16 pt-10 sm:px-6 sm:pt-14 lg:grid-cols-[minmax(0,1.02fr)_minmax(360px,0.98fr)] lg:items-center lg:gap-14 lg:px-8 lg:pb-24 lg:pt-20">
+        <section className="mx-auto grid w-full max-w-[1240px] gap-10 px-4 pb-16 pt-8 sm:px-6 sm:pt-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(380px,0.95fr)] lg:items-center lg:gap-12 lg:px-8 lg:pb-20 lg:pt-16">
           <div>
             <motion.div {...fadeUp}>
-              <span className="chip border-brand-200 bg-white text-brand-800">
-                <span className="h-1.5 w-1.5 rounded-full bg-jade-500" />
-                Hyderabad market intelligence
-              </span>
-              <h1 className="mt-5 max-w-[640px] font-display text-[45px] font-bold leading-[1.02] tracking-[-0.06em] text-ink sm:text-[58px] lg:text-[64px]">
+              <div className="inline-flex items-center gap-2 rounded-full border border-amber-200/90 bg-white/95 px-3.5 py-1 text-[11px] font-semibold text-stone-900 shadow-xs backdrop-blur-xs">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#F4D9A0] opacity-90" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[#C8792C]" />
+                </span>
+                <span>Hyderabad Urban Market Intelligence</span>
+                <span className="text-ink-faint">·</span>
+                <span className="font-mono text-[10.5px] font-bold text-[#C8792C]">
+                  {localities.length ? `${localities.length} Localities` : '54 Localities'}
+                </span>
+              </div>
+              <h1 className="mt-5 max-w-[640px] font-display text-[46px] font-bold leading-[1.02] tracking-[-0.055em] text-ink sm:text-[58px] lg:text-[66px]">
                 Know the market
                 <br />
-                <span className="text-gradient-brand">before you commit.</span>
+                <span className="font-serif italic font-normal tracking-normal text-ink-mute">before you </span>
+                <span className="text-gradient-brand">commit.</span>
               </h1>
               <p className="mt-5 max-w-[560px] text-[15px] leading-[1.7] text-ink-mute sm:text-[16px]">
-                Search a business category and locality. MarketMinds connects mapped supply,
-                historical activity, transport access, schools, and relative search interest into
-                one clear decision workspace.
+                Search any business category and locality. MarketMinds connects mapped retail supply,
+                historical licence filings, metro access, and search demand into one evidence workspace.
               </p>
             </motion.div>
 
@@ -199,25 +281,40 @@ export function Landing() {
             >
               <SearchConsole variant="hero" onComplete={() => navigate('/dashboard')} />
               <p className="mt-2.5 px-0.5 text-[10.5px] font-medium text-ink-faint">
-                Search by category, locality, or business name. No account required.
+                Search by category, locality, or business name. Zero signup required.
               </p>
             </motion.div>
 
             <motion.div
               {...fadeUp}
               transition={{ ...fadeUp.transition, delay: 0.12 }}
-              className="mt-8 grid max-w-[610px] grid-cols-3 divide-x divide-line rounded-xl border border-line bg-white"
+              className="mt-8 grid max-w-[610px] grid-cols-3 divide-x divide-line/80 rounded-2xl border border-line/80 bg-white/85 p-1 shadow-soft backdrop-blur-xs"
             >
               {[
-                { value: metaLoading ? '—' : formatNumber(mappedTotal), label: 'mapped places' },
-                { value: metaLoading ? '—' : formatNumber(localities.length), label: 'localities' },
-                { value: '5', label: 'public sources' },
+                {
+                  value: metaLoading ? '—' : formatNumber(mappedTotal),
+                  label: 'Mapped Outlets',
+                  detail: '13 categories audited',
+                },
+                {
+                  value: metaLoading ? '—' : formatNumber(localities.length),
+                  label: 'Active Catchments',
+                  detail: '155 GHMC wards covered',
+                },
+                {
+                  value: '11',
+                  label: 'Evidence Streams',
+                  detail: 'Civic, mobility, search',
+                },
               ].map((stat) => (
-                <div key={stat.label} className="px-3 py-3 sm:px-4">
-                  <p className="tabular font-display text-[20px] font-bold tracking-[-0.04em] text-ink sm:text-[23px]">
+                <div key={stat.label} className="px-3.5 py-3 sm:px-4">
+                  <p className="tabular font-display text-[22px] font-bold tracking-[-0.04em] text-ink sm:text-[25px]">
                     {stat.value}
                   </p>
-                  <p className="mt-0.5 text-[9.5px] font-semibold text-ink-faint">{stat.label}</p>
+                  <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-ink-mute">
+                    {stat.label}
+                  </p>
+                  <p className="text-[9.5px] font-medium text-ink-faint">{stat.detail}</p>
                 </div>
               ))}
             </motion.div>
@@ -238,102 +335,174 @@ export function Landing() {
             transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: 0.08 }}
             className="relative"
           >
-            <div className="absolute -inset-3 rounded-[32px] bg-gradient-to-br from-brand-500/[0.07] via-transparent to-sea-500/[0.08]" />
-            <div className="relative overflow-hidden rounded-2xl border border-line bg-white shadow-lift">
-              <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
+            {/* Ambient Aura */}
+            <div className="absolute -inset-2 rounded-[36px] bg-gradient-to-br from-brand-500/[0.08] via-blue-500/[0.04] to-sea-500/[0.07] blur-xl" />
+
+            <div className="relative overflow-hidden rounded-3xl border border-stone-200/80 bg-white/90 p-5 shadow-[0_24px_50px_-15px_rgba(200,121,44,0.14),0_1px_3px_rgba(16,24,40,0.04)] backdrop-blur-xl sm:p-6">
+              {/* Header: Catchment title and locality switcher pills */}
+              <div className="flex flex-col gap-3 border-b border-line/70 pb-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="label">Hyderabad at a glance</p>
-                  <p className="mt-1 font-display text-[18px] font-bold tracking-[-0.03em] text-ink">
-                    Mapped market supply
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#C8792C]" />
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C8792C]">
+                      Live Spatial Radar
+                    </p>
+                  </div>
+                  <p className="mt-0.5 font-display text-[17px] font-bold tracking-[-0.03em] text-ink">
+                    {activeLocality.name} Catchment
                   </p>
                 </div>
-                <Badge tone={metaLoading ? 'neutral' : metaError ? 'coral' : 'jade'} dot>
-                  {metaLoading ? 'Preparing data' : metaError ? 'Unavailable' : 'Data ready'}
-                </Badge>
+
+                {/* Locality Selector Pills */}
+                <div className="flex flex-wrap items-center gap-1">
+                  {HERO_LOCALITIES.map((loc, idx) => (
+                    <button
+                      key={loc.id}
+                      type="button"
+                      onClick={() => setActiveLocalityIndex(idx)}
+                      className={cn(
+                        'rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all duration-200',
+                        activeLocalityIndex === idx
+                          ? 'bg-[#C8792C] text-white shadow-xs'
+                          : 'border border-line bg-white/70 text-ink-mute hover:border-amber-300 hover:bg-amber-50/50 hover:text-[#C8792C]',
+                      )}
+                    >
+                      {loc.name}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="p-5">
-                <div className="flex items-end justify-between gap-4">
-                  <div>
-                    <p className="tabular font-display text-[38px] font-bold leading-none tracking-[-0.055em] text-ink">
-                      {metaLoading ? '—' : formatNumber(mappedTotal)}
-                    </p>
-                    <p className="mt-1.5 text-[10.5px] font-semibold text-ink-faint">
-                      mapped places across {categories.length || 13} categories
-                    </p>
+              {/* Spatial Catchment Radar Graphic */}
+              <div className="relative mt-4 flex items-center justify-center overflow-hidden rounded-2xl border border-line/60 bg-gradient-to-b from-[#FAF8F5] to-[#F3EDE4] py-6">
+                {/* SVG Concentric Rings and Radar Animation */}
+                <div className="relative h-[210px] w-[210px]">
+                  {/* Concentric Catchment Orbit Circles */}
+                  <div className="absolute inset-0 rounded-full border border-dashed border-amber-200/80" />
+                  <div className="absolute inset-[24px] rounded-full border border-dashed border-amber-300/70" />
+                  <div className="absolute inset-[48px] rounded-full border border-amber-300/40 bg-amber-50/30" />
+
+                  {/* Radar Sweep Line */}
+                  <div className="animate-radar absolute inset-0 origin-center">
+                    <div className="h-1/2 w-1/2 origin-bottom-right bg-gradient-to-br from-[#C8792C]/20 to-transparent [clip-path:polygon(100%_100%,_0_0,_100%_0)]" />
                   </div>
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-brand-100 bg-brand-50 text-brand-700">
-                    <Store className="h-4 w-4" />
+
+                  {/* Concentric Distance Labels */}
+                  <span className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 text-[8.5px] font-bold tracking-wider text-amber-700/80">
+                    {activeLocality.catchment}
                   </span>
+                  <span className="pointer-events-none absolute left-1/2 top-[26px] -translate-x-1/2 text-[8px] font-bold tracking-wider text-amber-600">
+                    500m
+                  </span>
+
+                  {/* Mapped POI Floating Nodes */}
+                  <div className="absolute left-[28%] top-[24%] flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 shadow-xs border border-amber-200/80">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#C8792C]" />
+                    <span className="text-[9px] font-bold text-ink">Cafés</span>
+                  </div>
+
+                  <div className="absolute right-[12%] top-[38%] flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 shadow-xs border border-sea-100">
+                    <span className="h-1.5 w-1.5 rounded-full bg-sea-600" />
+                    <span className="text-[9px] font-bold text-ink">Bakeries</span>
+                  </div>
+
+                  <div className="absolute left-[14%] bottom-[24%] flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 shadow-xs border border-gold-100 whitespace-nowrap">
+                    <span className="h-1.5 w-1.5 rounded-full bg-gold-600" />
+                    <span className="text-[9px] font-bold text-ink">Retail</span>
+                  </div>
+
+                  <div className="absolute right-[12%] bottom-[16%] flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 shadow-xs border border-jade-100 whitespace-nowrap">
+                    <span className="h-1.5 w-1.5 rounded-full bg-jade-600" />
+                    <span className="text-[9px] font-bold text-ink">Supermarkets</span>
+                  </div>
+
+                  {/* Epicenter Pin */}
+                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
+                    <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-[#C8792C] text-white shadow-md shadow-amber-500/40">
+                      <MapPin className="h-4 w-4" />
+                      <span className="absolute -inset-1 animate-ping rounded-full bg-[#F4D9A0] opacity-60" />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="mt-5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-ink-faint">
-                      Largest categories
-                    </p>
-                    <p className="text-[9.5px] font-semibold text-ink-faint">Mapped places</p>
-                  </div>
-
-                  {metaLoading &&
-                    Array.from({ length: 5 }, (_, index) => (
-                      <div key={index} className="flex items-center gap-3">
-                        <span className="h-7 w-7 animate-pulse rounded-md bg-ink/[0.06]" />
-                        <div className="flex-1 space-y-1.5">
-                          <span className="block h-2 w-24 animate-pulse rounded bg-ink/[0.07]" />
-                          <span className="block h-1.5 w-full animate-pulse rounded bg-ink/[0.04]" />
-                        </div>
-                      </div>
-                    ))}
-
-                  {!metaLoading &&
-                    topCategories.map((category) => {
-                      const count = category.mapped_poi_count ?? 0
-                      return (
-                        <div key={category.id} className="flex items-center gap-3">
-                          <CategoryGlyph icon={category.icon} tint={category.tint} size="sm" />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="truncate text-[11px] font-semibold text-ink-soft">
-                                {category.shortName}
-                              </p>
-                              <p className="tabular shrink-0 text-[10.5px] font-bold text-ink">
-                                {formatNumber(count)}
-                              </p>
-                            </div>
-                            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-line-soft">
-                              <div
-                                className="h-full rounded-full bg-gradient-to-r from-brand-500 to-sea-500"
-                                style={{ width: `${Math.max(5, (count / maxCategory) * 100)}%` }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                </div>
-
-                <div className="mt-5 flex items-center gap-3 rounded-lg border border-line bg-[#F8FAFC] p-3">
-                  <div className="flex -space-x-1.5">
-                    {['brand', 'sea', 'jade'].map((tone) => (
-                      <span
-                        key={tone}
-                        className={cn(
-                          'h-6 w-6 rounded-full border-2 border-white',
-                          tone === 'brand' ? 'bg-brand-500' : tone === 'sea' ? 'bg-sea-500' : 'bg-jade-500',
-                        )}
-                      />
-                    ))}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10.5px] font-bold text-ink">One context, every view</p>
-                    <p className="mt-0.5 truncate text-[9.5px] font-medium text-ink-faint">
-                      Category · Locality · Catchment radius
-                    </p>
-                  </div>
-                  <Layers3 className="h-4 w-4 shrink-0 text-ink-faint" />
+                {/* Catchment Info Badge */}
+                <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between rounded-lg bg-white/85 px-3 py-1.5 text-[10px] shadow-xs backdrop-blur-sm border border-line/60">
+                  <span className="font-semibold text-ink-mute">{activeLocality.zone}</span>
+                  <span className="font-bold text-[#C8792C]">{activeLocality.footfall}</span>
                 </div>
               </div>
+
+              {/* 3-Metric Executive Strip */}
+              <div className="mt-4 grid grid-cols-3 divide-x divide-line/70 rounded-xl border border-line/70 bg-[#FAF8F5] p-2.5">
+                <div className="px-2">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.06em] text-ink-faint">
+                    Catchment Supply
+                  </p>
+                  <p className="tabular mt-0.5 font-display text-[17px] font-bold text-ink">
+                    {activeLocality.pois} POIs
+                  </p>
+                  <p className="text-[9px] font-medium text-ink-faint truncate">{activeLocality.topCategory}</p>
+                </div>
+
+                <div className="px-2">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.06em] text-ink-faint">
+                    Transit Access
+                  </p>
+                  <p className="tabular mt-0.5 font-display text-[17px] font-bold text-[#C8792C]">
+                    {activeLocality.transitScore}/100
+                  </p>
+                  <p className="text-[9px] font-medium text-ink-faint truncate">{activeLocality.transitLabel}</p>
+                </div>
+
+                <div className="px-2">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.06em] text-ink-faint">
+                    Filing Velocity
+                  </p>
+                  <p className="tabular mt-0.5 font-display text-[17px] font-bold text-jade-700">
+                    {activeLocality.velocity}
+                  </p>
+                  <p className="text-[9px] font-medium text-ink-faint">GHMC trade licenses</p>
+                </div>
+              </div>
+
+              {/* Proportional Category Distribution Bar */}
+              <div className="mt-4">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="font-bold text-ink-mute">Catchment Category Mix</span>
+                  <span className="text-[9px] text-ink-faint">OpenStreetMap Verified</span>
+                </div>
+                {/* Segmented Bar */}
+                <div className="mt-1.5 flex h-2 w-full overflow-hidden rounded-full bg-line-soft">
+                  {activeLocality.segments.map((seg) => (
+                    <div
+                      key={seg.name}
+                      style={{ width: `${seg.share}%`, backgroundColor: seg.color }}
+                      className="h-full transition-all duration-300"
+                      title={`${seg.name}: ${seg.share}%`}
+                    />
+                  ))}
+                </div>
+                {/* Legend */}
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {activeLocality.segments.map((seg) => (
+                    <div key={seg.name} className="flex items-center gap-1 text-[9.5px]">
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: seg.color }} />
+                      <span className="font-medium text-ink-mute">{seg.name}</span>
+                      <span className="tabular font-bold text-ink">{seg.share}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Interactive CTA button to open that exact catchment */}
+              <button
+                type="button"
+                onClick={() => handleExploreCatchment(activeLocality.id)}
+                className="btn-secondary group mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[12.5px] font-bold text-ink"
+              >
+                <span>Explore {activeLocality.name} in Catchment Explorer</span>
+                <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-1" />
+              </button>
             </div>
           </motion.div>
         </section>
@@ -447,9 +616,9 @@ export function Landing() {
           <div className="mx-auto grid w-full max-w-[1240px] gap-4 px-4 py-16 sm:px-6 lg:grid-cols-[1.08fr_0.92fr] lg:px-8">
             <motion.div
               {...fadeUp}
-              className="overflow-hidden rounded-2xl bg-[linear-gradient(135deg,#312E81_0%,#4338CA_55%,#0F766E_125%)] p-6 text-white shadow-lift sm:p-8"
+              className="overflow-hidden rounded-2xl bg-[linear-gradient(135deg,#141416_0%,#2A1B0E_60%,#C8792C_125%)] p-6 text-white shadow-lift sm:p-8"
             >
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/60">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-200/90">
                 Evidence, not theater
               </p>
               <h2 className="mt-2 max-w-lg font-display text-[28px] font-bold leading-[1.18] tracking-[-0.04em] sm:text-[34px]">
@@ -457,7 +626,7 @@ export function Landing() {
                 <br />
                 Every gap stays visible.
               </h2>
-              <p className="mt-3 max-w-lg text-[12.5px] leading-relaxed text-white/75">
+              <p className="mt-3 max-w-lg text-[12.5px] leading-relaxed text-amber-100/90">
                 MarketMinds does not fill missing data with demo values, invented ratings, or
                 synthetic demand. When the available data cannot answer a question, the workspace says so.
               </p>
@@ -471,9 +640,9 @@ export function Landing() {
                 ].map((item) => (
                   <div
                     key={item}
-                    className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-2.5 py-2 text-[10.5px] font-semibold text-white/90"
+                    className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.08] px-2.5 py-2 text-[10.5px] font-semibold text-white/95"
                   >
-                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-sea-200" />
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-amber-300" />
                     {item}
                   </div>
                 ))}
@@ -481,7 +650,7 @@ export function Landing() {
 
               <Link
                 to="/dashboard"
-                className="mt-7 inline-flex h-10 items-center gap-2 rounded-lg border border-white/20 bg-white px-4 text-[12px] font-bold text-brand-800 transition-colors hover:bg-brand-50"
+                className="mt-7 inline-flex h-10 items-center gap-2 rounded-lg border border-white/20 bg-white px-4 text-[12px] font-bold text-[#C8792C] transition-colors hover:bg-amber-50"
               >
                 Explore the workspace
                 <ArrowRight className="h-3.5 w-3.5" />

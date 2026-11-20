@@ -165,7 +165,7 @@ export function MarketExplorer() {
     return (
       <div className="space-y-5">
         <PageHeader eyebrow="Explore" title="Market explorer" location="Hyderabad" />
-        <LoadingBlock label="Comparing all 16 locality analyses…" />
+        <LoadingBlock label="Comparing locality analyses across Hyderabad…" />
       </div>
     )
   }
@@ -351,7 +351,7 @@ export function MarketExplorer() {
                   </div>
                 }
               />
-              <div className="relative mt-3 h-[286px] overflow-hidden rounded-xl border border-line bg-[radial-gradient(circle_at_40%_30%,rgba(79,70,229,0.07),transparent_55%),linear-gradient(145deg,#FFFFFF,#F7F9FC)] dot-grid">
+              <div className="relative mt-3 h-[286px] overflow-hidden rounded-xl border border-line bg-[radial-gradient(circle_at_40%_30%,rgba(8,100,232,0.06),transparent_55%),linear-gradient(145deg,#FFFFFF,#F7F9FC)] dot-grid">
                 {bounds &&
                   rows.map((row) => {
                     const score =

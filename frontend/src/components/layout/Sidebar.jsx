@@ -29,8 +29,8 @@ export function Sidebar({ open, onClose }) {
         </button>
       </div>
 
-      <div className="mx-4 mb-5 flex items-center gap-2.5 rounded-lg border border-line bg-[#FBFCFE] px-3 py-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-brand-100 bg-brand-50 text-brand-700">
+      <div className="mx-4 mb-5 flex items-center gap-2.5 rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2.5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-amber-200 bg-white text-[#C8792C]">
           <MapPin className="h-3.5 w-3.5" />
         </span>
         <div className="min-w-0 leading-tight">
@@ -57,8 +57,8 @@ export function Sidebar({ open, onClose }) {
                     cn(
                       'group relative flex h-10 items-center gap-3 rounded-lg px-3 text-[12.5px] font-semibold transition-all duration-200',
                       isActive
-                        ? 'bg-brand-50 text-brand-800'
-                        : 'text-ink-mute hover:bg-ink/[0.035] hover:text-ink',
+                        ? 'bg-gradient-to-r from-[#C8792C] to-[#B3631C] text-white shadow-[0_4px_14px_-2px_rgba(200,121,44,0.42)]'
+                        : 'text-ink-mute hover:bg-amber-50/60 hover:text-[#C8792C]',
                     )
                   }
                 >
@@ -66,14 +66,14 @@ export function Sidebar({ open, onClose }) {
                     <>
                       <span
                         className={cn(
-                          'absolute left-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-r bg-brand-600 transition-opacity',
+                          'absolute left-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-r bg-[#F4D9A0] transition-opacity',
                           isActive ? 'opacity-100' : 'opacity-0',
                         )}
                       />
                       <item.icon
                         className={cn(
                           'h-[17px] w-[17px] shrink-0 transition-colors',
-                          isActive ? 'text-brand-700' : 'text-ink-faint group-hover:text-ink-mute',
+                          isActive ? 'text-white' : 'text-ink-faint group-hover:text-[#C8792C]',
                         )}
                         strokeWidth={1.9}
                       />
@@ -91,28 +91,6 @@ export function Sidebar({ open, onClose }) {
           </div>
         ))}
       </nav>
-
-      <div className="border-t border-line px-4 py-4">
-        <div className="rounded-lg border border-line bg-[#FBFCFE] p-3">
-          <p className="label">Data coverage</p>
-          <p className="mt-1.5 text-[11px] leading-relaxed text-ink-mute">
-            Business activity, civic context, mobility, and education data for Hyderabad.
-          </p>
-          <div className="mt-2.5 flex flex-wrap gap-1">
-            {['OSM', 'GHMC', 'Metro', 'Trends', 'UDISE+'].map((source) => (
-              <span
-                key={source}
-                className="rounded border border-line bg-white px-1.5 py-0.5 text-[8.5px] font-semibold text-ink-faint"
-              >
-                {source}
-              </span>
-            ))}
-          </div>
-        </div>
-        <p className="mt-2.5 px-1 text-[9.5px] leading-relaxed text-ink-faint">
-          Local decision support · No account required
-        </p>
-      </div>
     </aside>
   )
 }

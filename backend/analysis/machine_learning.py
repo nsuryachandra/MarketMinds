@@ -595,7 +595,7 @@ def cluster_and_pca_bundle(features: pd.DataFrame) -> dict[str, Any]:
         "eligible_sample_size": len(eligible),
         "random_state": MODEL_RANDOM_STATE,
         "exploratory_warning": (
-            "Clustering is an exploratory unsupervised grouping across 15 localities with sufficient mapped data. "
+            f"Clustering is an exploratory unsupervised grouping across {len(eligible)} localities with sufficient mapped data. "
             "Clusters group observed feature similarities; they do not represent investment grades or business success guarantees."
         ),
     }

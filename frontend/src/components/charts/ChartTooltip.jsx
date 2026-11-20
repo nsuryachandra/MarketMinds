@@ -42,7 +42,7 @@ export function ChartTooltip({
             <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-ink-mute">
               <span
                 className="h-1.5 w-1.5 rounded-full"
-                style={{ backgroundColor: entry.color ?? '#4F46E5' }}
+                style={{ backgroundColor: entry.color ?? '#C8792C' }}
               />
               {entry.name}
             </span>

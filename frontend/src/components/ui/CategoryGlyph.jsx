@@ -43,7 +43,7 @@ export const tintStyles = {
 }
 
 export const tintHex = {
-  brand: '#4F46E5',
+  brand: '#C8792C',
   sea: '#0F9D92',
   jade: '#079455',
   gold: '#DC6803',

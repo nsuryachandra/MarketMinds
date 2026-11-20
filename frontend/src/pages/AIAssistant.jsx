@@ -383,7 +383,7 @@ function AssistantWorkspace() {
 
       <div className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-4 shadow-xs sm:flex-row sm:items-center">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(145deg,#4F46E5,#0F9D92)] text-white shadow-sm">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(145deg,#141416,#C8792C)] text-white shadow-sm">
             <Sparkles className="h-4.5 w-4.5" />
           </span>
           <div className="min-w-0">
@@ -427,7 +427,7 @@ function AssistantWorkspace() {
         <GlassPanel className="flex h-[640px] flex-col overflow-hidden sm:h-[680px] xl:h-[calc(100vh-230px)] xl:max-h-[820px] xl:min-h-[620px]">
           <div className="flex items-center justify-between gap-3 border-b border-line/60 px-4 py-3">
             <div className="flex min-w-0 items-center gap-2.5">
-              <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[linear-gradient(145deg,#4F46E5,#0F9D92)] text-white">
+              <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[linear-gradient(145deg,#141416,#C8792C)] text-white">
                 <Sparkles className="h-4 w-4" />
                 <span
                   className={cn(
@@ -495,8 +495,8 @@ function AssistantWorkspace() {
                     style={
                       isUser
                         ? {
-                            background: 'linear-gradient(155deg, #6366F1 0%, #4F46E5 60%, #3730A3 100%)',
-                            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18)',
+                            background: 'linear-gradient(155deg, #E08F35 0%, #C8792C 60%, #9E5616 100%)',
+                            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14)',
                           }
                         : undefined
                     }

@@ -261,8 +261,8 @@ export function MarketTrends() {
                 <AreaChart data={monthlyChart} margin={{ top: 8, right: 10, bottom: 0, left: -16 }}>
                   <defs>
                     <linearGradient id="ghmcActivityFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#4F46E5" stopOpacity={0.26} />
-                      <stop offset="100%" stopColor="#4F46E5" stopOpacity={0.01} />
+                      <stop offset="0%" stopColor="#C8792C" stopOpacity={0.24} />
+                      <stop offset="100%" stopColor="#C8792C" stopOpacity={0.01} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 5" stroke="#E5EAF1" vertical={false} />
@@ -293,10 +293,10 @@ export function MarketTrends() {
                     type="monotone"
                     dataKey="applications"
                     name="Applications"
-                    stroke="#4F46E5"
+                    stroke="#C8792C"
                     strokeWidth={2.3}
                     fill="url(#ghmcActivityFill)"
-                    activeDot={{ r: 4, stroke: '#fff', strokeWidth: 2, fill: '#4F46E5' }}
+                    activeDot={{ r: 4, stroke: '#fff', strokeWidth: 2, fill: '#C8792C' }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -469,12 +469,12 @@ export function MarketTrends() {
                     iconType="circle"
                     iconSize={6}
                   />
-                  <Bar dataKey="y2022" name="2022" fill="#C7D2FE" radius={[4, 4, 0, 0]} barSize={12}>
+                  <Bar dataKey="y2022" name="2022" fill="#E2E8F0" radius={[4, 4, 0, 0]} barSize={12}>
                     {circleData.map((entry) => (
-                      <Cell key={`2022-${entry.name}`} fill="#C7D2FE" />
+                      <Cell key={`2022-${entry.name}`} fill="#E2E8F0" />
                     ))}
                   </Bar>
-                  <Bar dataKey="y2023" name="2023" fill="#4F46E5" radius={[4, 4, 0, 0]} barSize={12} />
+                  <Bar dataKey="y2023" name="2023" fill="#C8792C" radius={[4, 4, 0, 0]} barSize={12} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (

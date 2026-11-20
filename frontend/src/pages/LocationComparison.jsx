@@ -40,7 +40,7 @@ import { useApiResource } from '../hooks/useApiResource'
 import { marketApi } from '../lib/api'
 import { cn, formatNumber } from '../lib/utils'
 
-const seriesColors = ['#4F46E5', '#0F9D92', '#DC6803', '#D92D20']
+const seriesColors = ['#C8792C', '#0F9D92', '#5B4632', '#D92D20']
 
 const metricRows = [
   {

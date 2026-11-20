@@ -445,7 +445,7 @@ export function CompetitorIntelligence() {
                     return (
                       <Cell
                         key={entry.id}
-                        fill={tintHex[categoryMeta?.tint] ?? '#4F46E5'}
+                        fill={tintHex[categoryMeta?.tint] ?? '#0A0D12'}
                         fillOpacity={entry.id === categoryId ? 0.95 : 0.3}
                       />
                     )
