@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { cn } from '../../lib/utils'
+import { AnimatedNumber } from '../ui/AnimatedNumber'
 
 
 const bandColors = {
@@ -107,28 +108,18 @@ export function RiskGauge({ result, size = 236, className, subtitle }) {
           100
         </text>
 
-        <text
-          x={cx}
-          y={cy + 8}
-          textAnchor="middle"
-          fill="#111827"
-          fontSize="56"
-          fontWeight="800"
-          style={{ fontFamily: 'Manrope Variable, sans-serif', letterSpacing: '-0.05em' }}
-        >
-          {Math.round(result.score)}
-        </text>
-        <text
-          x={cx}
-          y={cy + 34}
-          textAnchor="middle"
-          fill="#667085"
-          fontSize="11"
-          fontWeight="600"
-          letterSpacing="0.08em"
-        >
-          RISK SCORE / 100
-        </text>
+        <foreignObject x={cx - 80} y={cy - 46} width="160" height="96" className="overflow-visible pointer-events-none">
+          <div className="flex h-full w-full flex-col items-center justify-center text-center">
+            <AnimatedNumber
+              value={result.score}
+              decimals={0}
+              className="font-display text-[54px] font-extrabold leading-none tracking-[-0.05em] text-ink"
+            />
+            <span className="mt-1 text-[10.5px] font-bold tracking-[0.08em] text-ink-mute uppercase">
+              RISK SCORE / 100
+            </span>
+          </div>
+        </foreignObject>
       </svg>
 
       <div className="-mt-3 flex flex-col items-center">

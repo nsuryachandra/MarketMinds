@@ -1,7 +1,8 @@
+import { motion } from 'framer-motion'
 import { cn } from '../../lib/utils'
 
 const tones = {
-  brand: 'bg-brand-600',
+  brand: 'bg-[#C8792C]',
   sea: 'bg-sea-500',
   jade: 'bg-jade-500',
   gold: 'bg-gold-500',
@@ -9,25 +10,18 @@ const tones = {
   ink: 'bg-ink',
 }
 
-
-
-
-
-
-
-
-
-
 export function Meter({ value, tone = 'brand', className, height = 'sm', trackClassName, gradient }) {
   const heights = { xs: 'h-1', sm: 'h-1.5', md: 'h-2' }
   return (
     <div className={cn('w-full overflow-hidden rounded-full bg-ink/[0.06]', heights[height], trackClassName, className)}>
-      <div
+      <motion.div
         className={cn(
-          'h-full rounded-full transition-[width] duration-700 ease-out',
-          gradient ? 'bg-gradient-to-r from-brand-600 to-sea-500' : tones[tone],
+          'h-full rounded-full',
+          gradient ? 'bg-gradient-to-r from-[#C8792C] to-[#F4D9A0]' : tones[tone],
         )}
-        style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+        initial={{ width: 0 }}
+        animate={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+        transition={{ type: 'spring', stiffness: 55, damping: 16 }}
       />
     </div>
   )

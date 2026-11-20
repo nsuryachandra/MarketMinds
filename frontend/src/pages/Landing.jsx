@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { Logo } from '../components/ui/Logo'
 import { Badge } from '../components/ui/Badge'
+import { AnimatedNumber } from '../components/ui/AnimatedNumber'
 import { SearchConsole } from '../components/domain/SearchConsole'
 import { SourceNote } from '../components/domain/DataState'
 import { useMarket } from '../context/MarketContext'
@@ -131,6 +132,12 @@ const HERO_LOCALITIES = [
     velocity: '+14.2% YoY',
     topCategory: 'Cafes & Bakeries',
     catchment: '1,000m',
+    poisList: [
+      { id: 'am-1', label: 'Coaching Hubs', x: 26, y: 22, color: '#C8792C' },
+      { id: 'am-2', label: 'Irani Cafés', x: 68, y: 32, color: '#0A0D12' },
+      { id: 'am-3', label: 'Metro Bakeries', x: 20, y: 68, color: '#D97706' },
+      { id: 'am-4', label: 'Hardware Marts', x: 74, y: 72, color: '#059669' },
+    ],
     segments: [
       { name: 'Cafes & Bakeries', share: 36, color: '#0A0D12' },
       { name: 'Education & Coaching', share: 28, color: '#059669' },
@@ -149,6 +156,12 @@ const HERO_LOCALITIES = [
     velocity: '+22.5% YoY',
     topCategory: 'Dining & Wellness',
     catchment: '2,000m',
+    poisList: [
+      { id: 'gb-1', label: 'Tech Campuses', x: 28, y: 20, color: '#0A0D12' },
+      { id: 'gb-2', label: 'Third-Wave Coffee', x: 72, y: 26, color: '#C8792C' },
+      { id: 'gb-3', label: 'CrossFit Studios', x: 18, y: 70, color: '#059669' },
+      { id: 'gb-4', label: 'Executive Dining', x: 70, y: 72, color: '#D97706' },
+    ],
     segments: [
       { name: 'Dining & Food Courts', share: 42, color: '#0A0D12' },
       { name: 'Fitness & Wellness', share: 24, color: '#059669' },
@@ -167,6 +180,12 @@ const HERO_LOCALITIES = [
     velocity: '+9.8% YoY',
     topCategory: 'Boutiques & Specialty',
     catchment: '1,500m',
+    poisList: [
+      { id: 'bh-1', label: 'Couture Boutiques', x: 24, y: 24, color: '#0A0D12' },
+      { id: 'bh-2', label: 'Artisan Eateries', x: 74, y: 30, color: '#C8792C' },
+      { id: 'bh-3', label: 'Wellness Spas', x: 22, y: 66, color: '#059669' },
+      { id: 'bh-4', label: 'Jewelry Salons', x: 70, y: 74, color: '#D97706' },
+    ],
     segments: [
       { name: 'Fine Dining', share: 38, color: '#0A0D12' },
       { name: 'Luxury Boutiques', share: 32, color: '#059669' },
@@ -185,6 +204,12 @@ const HERO_LOCALITIES = [
     velocity: '+11.4% YoY',
     topCategory: 'Supermarkets & FMCG',
     catchment: '1,000m',
+    poisList: [
+      { id: 'kp-1', label: 'Electronics Hubs', x: 26, y: 22, color: '#0A0D12' },
+      { id: 'kp-2', label: 'Sweet Houses', x: 70, y: 28, color: '#C8792C' },
+      { id: 'kp-3', label: 'Pharmacies', x: 20, y: 72, color: '#059669' },
+      { id: 'kp-4', label: 'Hypermarkets', x: 72, y: 70, color: '#D97706' },
+    ],
     segments: [
       { name: 'Supermarkets & FMCG', share: 34, color: '#0A0D12' },
       { name: 'Electronics & Apparel', share: 30, color: '#059669' },
@@ -292,25 +317,46 @@ export function Landing() {
             >
               {[
                 {
-                  value: metaLoading ? '—' : formatNumber(mappedTotal),
+                  value: mappedTotal,
+                  renderValue: () => (
+                    <AnimatedNumber
+                      value={mappedTotal}
+                      className="tabular font-display text-[22px] font-bold tracking-[-0.04em] text-ink sm:text-[25px]"
+                    />
+                  ),
                   label: 'Mapped Outlets',
                   detail: '13 categories audited',
                 },
                 {
-                  value: metaLoading ? '—' : formatNumber(localities.length),
+                  value: localities.length || 54,
+                  renderValue: () => (
+                    <AnimatedNumber
+                      value={localities.length || 54}
+                      className="tabular font-display text-[22px] font-bold tracking-[-0.04em] text-ink sm:text-[25px]"
+                    />
+                  ),
                   label: 'Active Catchments',
                   detail: '155 GHMC wards covered',
                 },
                 {
-                  value: '11',
+                  value: 11,
+                  renderValue: () => (
+                    <span className="tabular font-display text-[22px] font-bold tracking-[-0.04em] text-ink sm:text-[25px]">
+                      11
+                    </span>
+                  ),
                   label: 'Evidence Streams',
                   detail: 'Civic, mobility, search',
                 },
               ].map((stat) => (
                 <div key={stat.label} className="px-3.5 py-3 sm:px-4">
-                  <p className="tabular font-display text-[22px] font-bold tracking-[-0.04em] text-ink sm:text-[25px]">
-                    {stat.value}
-                  </p>
+                  {metaLoading ? (
+                    <span className="tabular font-display text-[22px] font-bold tracking-[-0.04em] text-ink sm:text-[25px]">
+                      —
+                    </span>
+                  ) : (
+                    stat.renderValue()
+                  )}
                   <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-ink-mute">
                     {stat.label}
                   </p>
@@ -355,21 +401,29 @@ export function Landing() {
 
                 {/* Locality Selector Pills */}
                 <div className="flex flex-wrap items-center gap-1">
-                  {HERO_LOCALITIES.map((loc, idx) => (
-                    <button
-                      key={loc.id}
-                      type="button"
-                      onClick={() => setActiveLocalityIndex(idx)}
-                      className={cn(
-                        'rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all duration-200',
-                        activeLocalityIndex === idx
-                          ? 'bg-[#C8792C] text-white shadow-xs'
-                          : 'border border-line bg-white/70 text-ink-mute hover:border-amber-300 hover:bg-amber-50/50 hover:text-[#C8792C]',
-                      )}
-                    >
-                      {loc.name}
-                    </button>
-                  ))}
+                  {HERO_LOCALITIES.map((loc, idx) => {
+                    const isActive = activeLocalityIndex === idx
+                    return (
+                      <button
+                        key={loc.id}
+                        type="button"
+                        onClick={() => setActiveLocalityIndex(idx)}
+                        className={cn(
+                          'relative rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-colors duration-200',
+                          isActive ? 'text-white' : 'text-ink-mute hover:text-[#C8792C]',
+                        )}
+                      >
+                        {isActive && (
+                          <motion.div
+                            layoutId="heroRadarPill"
+                            className="absolute inset-0 rounded-lg bg-[#C8792C] shadow-xs"
+                            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                          />
+                        )}
+                        <span className="relative z-10">{loc.name}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 
@@ -382,9 +436,28 @@ export function Landing() {
                   <div className="absolute inset-[24px] rounded-full border border-dashed border-amber-300/70" />
                   <div className="absolute inset-[48px] rounded-full border border-amber-300/40 bg-amber-50/30" />
 
+                  {/* Sonar Expanding Waves */}
+                  {[0, 1.5, 3.0].map((delay) => (
+                    <motion.div
+                      key={delay}
+                      className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-amber-400/50"
+                      style={{ width: 60, height: 60 }}
+                      animate={{
+                        scale: [1, 3.4],
+                        opacity: [0.7, 0],
+                      }}
+                      transition={{
+                        repeat: Infinity,
+                        duration: 4.5,
+                        delay,
+                        ease: 'easeOut',
+                      }}
+                    />
+                  ))}
+
                   {/* Radar Sweep Line */}
                   <div className="animate-radar absolute inset-0 origin-center">
-                    <div className="h-1/2 w-1/2 origin-bottom-right bg-gradient-to-br from-[#C8792C]/20 to-transparent [clip-path:polygon(100%_100%,_0_0,_100%_0)]" />
+                    <div className="h-1/2 w-1/2 origin-bottom-right bg-gradient-to-br from-[#C8792C]/25 to-transparent [clip-path:polygon(100%_100%,_0_0,_100%_0)]" />
                   </div>
 
                   {/* Concentric Distance Labels */}
@@ -395,32 +468,35 @@ export function Landing() {
                     500m
                   </span>
 
-                  {/* Mapped POI Floating Nodes */}
-                  <div className="absolute left-[28%] top-[24%] flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 shadow-xs border border-amber-200/80">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#C8792C]" />
-                    <span className="text-[9px] font-bold text-ink">Cafés</span>
-                  </div>
+                  {/* Dynamic Mapped POI Floating Nodes */}
+                  {activeLocality.poisList.map((poi, idx) => (
+                    <motion.div
+                      key={poi.id}
+                      layout
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{
+                        opacity: 1,
+                        scale: 1,
+                        y: [0, -3.5, 0],
+                      }}
+                      transition={{
+                        layout: { type: 'spring', stiffness: 340, damping: 28 },
+                        y: { repeat: Infinity, duration: 3.2 + idx * 0.5, ease: 'easeInOut' },
+                      }}
+                      whileHover={{ scale: 1.12, y: -5 }}
+                      className="absolute flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-0.5 shadow-xs border border-amber-200/90 cursor-default select-none transition-shadow hover:shadow-soft"
+                      style={{ left: `${poi.x}%`, top: `${poi.y}%` }}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: poi.color }} />
+                      <span className="text-[9px] font-bold text-ink">{poi.label}</span>
+                    </motion.div>
+                  ))}
 
-                  <div className="absolute right-[12%] top-[38%] flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 shadow-xs border border-sea-100">
-                    <span className="h-1.5 w-1.5 rounded-full bg-sea-600" />
-                    <span className="text-[9px] font-bold text-ink">Bakeries</span>
-                  </div>
-
-                  <div className="absolute left-[14%] bottom-[24%] flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 shadow-xs border border-gold-100 whitespace-nowrap">
-                    <span className="h-1.5 w-1.5 rounded-full bg-gold-600" />
-                    <span className="text-[9px] font-bold text-ink">Retail</span>
-                  </div>
-
-                  <div className="absolute right-[12%] bottom-[16%] flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 shadow-xs border border-jade-100 whitespace-nowrap">
-                    <span className="h-1.5 w-1.5 rounded-full bg-jade-600" />
-                    <span className="text-[9px] font-bold text-ink">Supermarkets</span>
-                  </div>
-
-                  {/* Epicenter Pin */}
+                  {/* Epicenter Pin with Pulse */}
                   <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
                     <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-[#C8792C] text-white shadow-md shadow-amber-500/40">
                       <MapPin className="h-4 w-4" />
-                      <span className="absolute -inset-1 animate-ping rounded-full bg-[#F4D9A0] opacity-60" />
+                      <span className="absolute -inset-1.5 animate-ping rounded-full bg-[#F4D9A0] opacity-60" />
                     </div>
                   </div>
                 </div>
@@ -439,7 +515,7 @@ export function Landing() {
                     Catchment Supply
                   </p>
                   <p className="tabular mt-0.5 font-display text-[17px] font-bold text-ink">
-                    {activeLocality.pois} POIs
+                    <AnimatedNumber value={activeLocality.pois} /> POIs
                   </p>
                   <p className="text-[9px] font-medium text-ink-faint truncate">{activeLocality.topCategory}</p>
                 </div>
@@ -449,7 +525,7 @@ export function Landing() {
                     Transit Access
                   </p>
                   <p className="tabular mt-0.5 font-display text-[17px] font-bold text-[#C8792C]">
-                    {activeLocality.transitScore}/100
+                    <AnimatedNumber value={activeLocality.transitScore} />/100
                   </p>
                   <p className="text-[9px] font-medium text-ink-faint truncate">{activeLocality.transitLabel}</p>
                 </div>
@@ -474,10 +550,13 @@ export function Landing() {
                 {/* Segmented Bar */}
                 <div className="mt-1.5 flex h-2 w-full overflow-hidden rounded-full bg-line-soft">
                   {activeLocality.segments.map((seg) => (
-                    <div
+                    <motion.div
                       key={seg.name}
-                      style={{ width: `${seg.share}%`, backgroundColor: seg.color }}
-                      className="h-full transition-all duration-300"
+                      initial={false}
+                      animate={{ width: `${seg.share}%` }}
+                      transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+                      style={{ backgroundColor: seg.color }}
+                      className="h-full"
                       title={`${seg.name}: ${seg.share}%`}
                     />
                   ))}
@@ -583,28 +662,30 @@ export function Landing() {
                 key={feature.to}
                 {...fadeUp}
                 transition={{ ...fadeUp.transition, delay: index * 0.03 }}
+                whileHover={{ y: -5, scale: 1.012 }}
+                className="h-full"
               >
                 <Link
                   to={feature.to}
-                  className="group flex h-full flex-col rounded-xl border border-line bg-white p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-soft"
+                  className="group flex h-full flex-col rounded-xl border border-line bg-white p-4 transition-all duration-300 hover:border-amber-300 hover:shadow-[0_12px_28px_-6px_rgba(200,121,44,0.18)]"
                 >
                   <span
                     className={cn(
-                      'flex h-9 w-9 items-center justify-center rounded-lg border',
+                      'flex h-9 w-9 items-center justify-center rounded-lg border transition-transform duration-300 group-hover:scale-110',
                       toneClass[feature.tone],
                     )}
                   >
                     <feature.icon className="h-4 w-4" strokeWidth={1.9} />
                   </span>
-                  <h3 className="mt-3.5 font-display text-[14px] font-bold tracking-[-0.02em] text-ink">
+                  <h3 className="mt-3.5 font-display text-[14px] font-bold tracking-[-0.02em] text-ink transition-colors group-hover:text-[#C8792C]">
                     {feature.title}
                   </h3>
                   <p className="mt-1 flex-1 text-[11px] leading-relaxed text-ink-mute">
                     {feature.description}
                   </p>
-                  <span className="mt-3 inline-flex items-center gap-1 text-[10.5px] font-bold text-brand-700">
-                    Open view
-                    <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+                  <span className="mt-3 inline-flex items-center gap-1 text-[10.5px] font-bold text-[#C8792C]">
+                    <span>Open view</span>
+                    <ArrowRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
                   </span>
                 </Link>
               </motion.div>

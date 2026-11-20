@@ -30,6 +30,7 @@ import { MetricCard } from '../components/ui/MetricCard'
 import { PanelHeader } from '../components/ui/PanelHeader'
 import { Badge } from '../components/ui/Badge'
 import { Meter } from '../components/ui/Meter'
+import { AnimatedNumber } from '../components/ui/AnimatedNumber'
 import { CategoryGlyph, tintHex } from '../components/ui/CategoryGlyph'
 import { RiskGauge } from '../components/domain/RiskGauge'
 import { SearchConsole } from '../components/domain/SearchConsole'
@@ -279,11 +280,19 @@ export function Dashboard() {
 
           <div className="relative mt-6 grid gap-6 sm:grid-cols-[210px_1fr] sm:items-center">
             {/* Opportunity Index Hero Gauge */}
-            <div className="rounded-2xl border border-line/70 bg-[#FBFCFE] p-4">
+            <div className="rounded-2xl border border-line/70 bg-[#FBFCFE] p-4 transition-all duration-300 hover:border-amber-300/60 hover:shadow-soft">
               <div className="flex items-end gap-2.5">
-                <span className="tabular font-display text-[46px] font-extrabold leading-[0.95] tracking-[-0.055em] text-ink">
-                  {scores?.opportunity_index ?? '—'}
-                </span>
+                {scores?.opportunity_index !== undefined && scores?.opportunity_index !== null ? (
+                  <AnimatedNumber
+                    value={scores.opportunity_index}
+                    decimals={2}
+                    className="tabular font-display text-[46px] font-extrabold leading-[0.95] tracking-[-0.055em] text-ink"
+                  />
+                ) : (
+                  <span className="tabular font-display text-[46px] font-extrabold leading-[0.95] tracking-[-0.055em] text-ink">
+                    —
+                  </span>
+                )}
                 <span
                   className={cn(
                     'mb-1 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold',
@@ -308,20 +317,20 @@ export function Dashboard() {
 
             {/* De-cluttered 4-Metric Unified Strip */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl border border-line/70 bg-[#FBFCFE] p-3">
+              <div className="rounded-xl border border-line/70 bg-[#FBFCFE] p-3 transition-all duration-200 hover:border-amber-200 hover:shadow-xs">
                 <p className="label">Catchment Supply</p>
                 <p className="tabular mt-1 font-display text-[19px] font-bold text-ink">
-                  {formatNumber(snapshot?.mapped_poi_count ?? 0)} Places
+                  <AnimatedNumber value={snapshot?.mapped_poi_count ?? 0} /> Places
                 </p>
                 <p className="mt-0.5 text-[10px] font-medium text-ink-faint">
                   {cityCategory?.share_of_mapped_pct ?? '—'}% of city mapped supply
                 </p>
               </div>
 
-              <div className="rounded-xl border border-line/70 bg-[#FBFCFE] p-3">
+              <div className="rounded-xl border border-line/70 bg-[#FBFCFE] p-3 transition-all duration-200 hover:border-amber-200 hover:shadow-xs">
                 <p className="label">Direct Competitors</p>
                 <p className="tabular mt-1 font-display text-[19px] font-bold text-ink">
-                  {formatNumber(competitors?.competitor_count ?? 0)} Mapped
+                  <AnimatedNumber value={competitors?.competitor_count ?? 0} /> Mapped
                 </p>
                 <p className="mt-0.5 text-[10px] font-medium text-ink-faint">
                   {competitors?.unnamed_competitor_count
@@ -330,17 +339,17 @@ export function Dashboard() {
                 </p>
               </div>
 
-              <div className="rounded-xl border border-line/70 bg-[#FBFCFE] p-3">
+              <div className="rounded-xl border border-line/70 bg-[#FBFCFE] p-3 transition-all duration-200 hover:border-amber-200 hover:shadow-xs">
                 <p className="label">Transit Access</p>
                 <p className="tabular mt-1 font-display text-[19px] font-bold text-ink">
-                  {formatNumber(access?.bus_stops_within_radius ?? 0)} Bus · {formatNumber(access?.metro_stations_within_radius ?? 0)} Metro
+                  <AnimatedNumber value={access?.bus_stops_within_radius ?? 0} /> Bus · <AnimatedNumber value={access?.metro_stations_within_radius ?? 0} /> Metro
                 </p>
                 <p className="mt-0.5 text-[10px] font-medium text-ink-faint">
                   Access score {scores?.access_index ?? '—'}/100
                 </p>
               </div>
 
-              <div className="rounded-xl border border-line/70 bg-[#FBFCFE] p-3">
+              <div className="rounded-xl border border-line/70 bg-[#FBFCFE] p-3 transition-all duration-200 hover:border-amber-200 hover:shadow-xs">
                 <p className="label">Concentration</p>
                 <p className="tabular mt-1 font-display text-[19px] font-bold text-ink">
                   HHI {snapshot?.category_mix_hhi ?? '—'}

@@ -89,8 +89,8 @@ export function SearchConsole({ variant = 'hero', onComplete, className }) {
         className={cn(
           'transition-all duration-300',
           isHero
-            ? 'rounded-2xl border border-line/90 bg-white/95 p-2 shadow-[0_16px_36px_-16px_rgba(10,13,18,0.10),0_1px_3px_rgba(10,13,18,0.04)] backdrop-blur-xl ring-1 ring-black/[0.03] focus-within:border-stone-400 focus-within:ring-4 focus-within:ring-stone-900/10'
-            : 'rounded-xl border border-line bg-white p-1.5 shadow-soft focus-within:border-stone-400 focus-within:ring-2 focus-within:ring-stone-900/10',
+            ? 'rounded-2xl border border-line/90 bg-white/95 p-2 shadow-[0_16px_36px_-16px_rgba(10,13,18,0.10),0_1px_3px_rgba(10,13,18,0.04)] backdrop-blur-xl ring-1 ring-black/[0.03] focus-within:border-amber-300 focus-within:ring-4 focus-within:ring-amber-500/15 focus-within:shadow-[0_20px_40px_-15px_rgba(200,121,44,0.18)]'
+            : 'rounded-xl border border-line bg-white p-1.5 shadow-soft focus-within:border-amber-300 focus-within:ring-2 focus-within:ring-amber-500/15',
         )}
       >
         <form onSubmit={submit} className="flex flex-col gap-1.5 sm:flex-row">
