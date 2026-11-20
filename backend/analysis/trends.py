@@ -1,12 +1,12 @@
-"""GHMC application and Google Trends summaries built from recorded data."""
+"""GHMC application and Google Trends summaries with predictive analytics."""
 
 from __future__ import annotations
 
 from collections import defaultdict
 from typing import Any
 
+from analysis import machine_learning
 from data.data_cleaning import CATEGORY_BY_ID, percentage, round_or_none
-
 
 TREND_CATEGORY_IDS = {"restaurants", "grocery", "fashion", "pharmacy", "fitness"}
 
@@ -187,6 +187,13 @@ def trends_overview(
         yoy_change = percentage(value_2023 - value_2022, value_2022)
     circles = _circle_comparison(connection, circle_no)
     google_trends = _google_trends(connection, selected_id)
+
+    # Genuine machine learning predictive analytics
+    trend_regression = machine_learning.evaluate_search_interest_regression(
+        connection, selected_id
+    )
+    ghmc_regression = machine_learning.evaluate_ghmc_activity_regression(connection)
+
     return {
         "category": {
             "id": selected_id,
@@ -214,5 +221,9 @@ def trends_overview(
             else "No Google Trends term is mapped to this category in the supplied dataset. "
             "Available trend categories are restaurants, grocery, fashion, pharmacy, and fitness."
         ),
+        "predictive_analytics": {
+            "search_interest_models": trend_regression,
+            "ghmc_activity_models": ghmc_regression,
+        },
         "data_status": "available" if monthly or google_trends else "insufficient_data",
     }

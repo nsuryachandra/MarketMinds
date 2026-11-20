@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+
 from analysis import market
-from data.data_cleaning import haversine_km, percentage
+from data.data_cleaning import percentage
 
 
 def _competitor_rows_at(
@@ -21,22 +23,27 @@ def _competitor_rows_at(
         SELECT osm_id, name, name_status, subtype, osm_key, osm_value,
                latitude, longitude, ward_id, inside_ghmc
         FROM businesses
-        WHERE category_id = ?
+        WHERE category_id = ? AND latitude IS NOT NULL AND longitude IS NOT NULL
         """,
         (category_id,),
     ).fetchall()
+    if not rows:
+        return []
+
     radius_km = radius_m / 1000.0
+    lats = np.array([row["latitude"] for row in rows], dtype=float)
+    lons = np.array([row["longitude"] for row in rows], dtype=float)
+
+    # Vectorized Haversine distance
+    dists_km = market._haversine_km(latitude, longitude, lats, lons)
+    within_mask = dists_km <= radius_km
+
     competitors: list[dict[str, Any]] = []
-    for row in rows:
-        if exclude_osm_id is not None and row["osm_id"] == exclude_osm_id:
+    for i, is_within in enumerate(within_mask):
+        if not is_within:
             continue
-        distance_km = haversine_km(
-            latitude,
-            longitude,
-            row["latitude"],
-            row["longitude"],
-        )
-        if distance_km > radius_km:
+        row = rows[i]
+        if exclude_osm_id is not None and row["osm_id"] == exclude_osm_id:
             continue
         competitors.append(
             {
@@ -47,13 +54,14 @@ def _competitor_rows_at(
                 "subtype": row["subtype"],
                 "osm_key": row["osm_key"],
                 "osm_value": row["osm_value"],
-                "latitude": row["latitude"],
-                "longitude": row["longitude"],
-                "distance_m": round(distance_km * 1000.0, 1),
+                "latitude": float(row["latitude"]),
+                "longitude": float(row["longitude"]),
+                "distance_m": round(float(dists_km[i]) * 1000.0, 1),
                 "ward_id": row["ward_id"],
                 "inside_ghmc": bool(row["inside_ghmc"]),
             }
         )
+
     competitors.sort(
         key=lambda item: (
             item["distance_m"],
@@ -154,6 +162,4 @@ def nearby_competitors_for_business(
         snapshot["catchment"]["radius_m"],
         exclude_osm_id=osm_id,
     )
-    payload = _competitor_payload(snapshot, competitors, limit)
-    payload["business"] = snapshot["business"]
-    return payload
+    return _competitor_payload(snapshot, competitors, limit)

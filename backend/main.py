@@ -19,7 +19,16 @@ BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from analysis import competitors, financial, location, market, risk, search, trends
+from analysis import (
+    competitors,
+    financial,
+    location,
+    machine_learning,
+    market,
+    risk,
+    search,
+    trends,
+)
 from assistant import AssistantError, chat as assistant_chat, get_configuration
 from data.data_cleaning import (
     CATEGORY_BY_ID,
@@ -337,6 +346,57 @@ def data_source_metadata(connection: Any = Depends(get_db)) -> dict[str, Any]:
             "Rent is not available as a dataset and is accepted only as user input.",
         ],
     }
+
+
+@app.get("/api/v1/analytics/market-insights")
+def market_analytics(
+    locality: str = Query(...),
+    category: str = Query(default="cafes"),
+    radius_m: int = Query(default=DEFAULT_RADIUS_M),
+    connection: Any = Depends(get_db),
+) -> dict[str, Any]:
+    try:
+        return machine_learning.market_insights(
+            connection,
+            locality,
+            category,
+            radius_m,
+        )
+    except ValueError as error:
+        raise _client_error(error) from error
+
+
+@app.get("/api/v1/analytics/eda")
+def exploratory_data_analysis(connection: Any = Depends(get_db)) -> dict[str, Any]:
+    try:
+        return machine_learning.run_full_eda(connection)
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
+
+
+@app.get("/api/v1/analytics/models")
+def machine_learning_models(
+    category: str = Query(default="restaurants"),
+    radius_m: int = Query(default=DEFAULT_RADIUS_M),
+    connection: Any = Depends(get_db),
+) -> dict[str, Any]:
+    try:
+        return {
+            "search_interest_regression": machine_learning.evaluate_search_interest_regression(
+                connection, category
+            ),
+            "ghmc_activity_regression": machine_learning.evaluate_ghmc_activity_regression(
+                connection
+            ),
+            "clustering_and_pca": machine_learning.cluster_and_pca_bundle(
+                machine_learning.get_locality_features(connection, category, radius_m)
+            ).get("model"),
+            "decision_tree_classification": machine_learning.evaluate_decision_tree_classification(
+                connection
+            ),
+        }
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
 
 
 @app.get("/api/v1/market/overview")

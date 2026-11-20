@@ -1,11 +1,10 @@
-"""Side-by-side locality comparison on real mapped-data metrics."""
+"""Side-by-side locality comparison on real mapped-data metrics and similarity clusters."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from analysis import market
-
 
 MAX_COMPARISON_LOCALITIES = 4
 
@@ -54,6 +53,8 @@ def compare_localities(
                 "competition_context": snapshot["competition_context"],
                 "activity_context": snapshot["activity_context"],
                 "access_counts": snapshot["access_counts"],
+                "similarity_cluster": snapshot.get("similarity_cluster"),
+                "prescriptive_recommendations": snapshot.get("prescriptive_recommendations", []),
                 "data_status": snapshot["data_status"],
                 "data_quality": snapshot["data_quality"],
                 "data_notes": snapshot["data_notes"],
@@ -69,6 +70,7 @@ def compare_localities(
             "Rent benchmarks and rental affordability are intentionally excluded.",
             "Footfall, closures, and sales are not available in the supplied datasets.",
             "Activity uses GHMC circle-level 2022-2023 licence applications.",
+            "Locality similarity clusters are computed via K-Means and Ward hierarchical linkage on standardized infrastructure features.",
         ],
         "sources": snapshot_list[0]["sources"],
     }

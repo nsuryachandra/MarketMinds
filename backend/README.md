@@ -81,6 +81,9 @@ The default API URL in `src/lib/api.js` is the same address. CORS allows `http:/
 | POST | `/api/v1/market/business/risk` | Directional risk estimate around a mapped business |
 | POST | `/api/v1/financial/estimate` | Method A/B financial scenarios |
 | POST | `/api/v1/assistant/chat` | Grounded NVIDIA chat using the frontend analysis context |
+| GET | `/api/v1/analytics/market-insights` | FDS intelligence bundle: descriptive metrics, similarity clustering, PCA, diagnostic rank correlations, prescriptive recommendations |
+| GET | `/api/v1/analytics/eda` | Exploratory Data Analysis: table shapes, missing values, duplicates, and IQR outliers |
+| GET | `/api/v1/analytics/models` | Machine learning model evaluation records: Linear/Ridge/Lasso regression, KMeans, PCA, DecisionTree classification |
 
 Common query parameters:
 

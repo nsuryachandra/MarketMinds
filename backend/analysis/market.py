@@ -1,4 +1,4 @@
-"""Real-data market metrics and transparent relative scores."""
+"""Real-data market metrics, transparent relative scores, and FDS analytical methods."""
 
 from __future__ import annotations
 
@@ -6,17 +6,17 @@ import math
 from statistics import median
 from typing import Any
 
+import numpy as np
+import pandas as pd
+
 from data.data_cleaning import (
     CATEGORY_BY_ID,
     CATEGORY_NAMES,
     DEFAULT_RADIUS_M,
     RADIUS_OPTIONS_M,
     clamp,
-    haversine_km,
     percentage,
-    round_or_none,
 )
-
 
 MIN_CATEGORY_CITY_COUNT = 10
 MIN_CATCHMENT_COUNT = 3
@@ -81,6 +81,21 @@ def list_localities(connection: Any) -> list[dict[str, Any]]:
     ]
 
 
+def _haversine_km(
+    lat1: np.ndarray | float,
+    lon1: np.ndarray | float,
+    lat2: np.ndarray | float,
+    lon2: np.ndarray | float,
+) -> np.ndarray | float:
+    """NumPy vectorized haversine calculation in kilometers."""
+    phi1 = np.radians(lat1)
+    phi2 = np.radians(lat2)
+    d_phi = np.radians(lat2 - lat1)
+    d_lam = np.radians(lon2 - lon1)
+    a = np.sin(d_phi / 2.0) ** 2 + np.cos(phi1) * np.cos(phi2) * np.sin(d_lam / 2.0) ** 2
+    return 2.0 * 6371.0088 * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))
+
+
 def nearest_locality(
     connection: Any,
     latitude: float,
@@ -89,26 +104,12 @@ def nearest_locality(
     localities = list_localities(connection)
     if not localities:
         return None
-    nearest = min(
-        localities,
-        key=lambda item: haversine_km(
-            latitude,
-            longitude,
-            item["latitude"],
-            item["longitude"],
-        ),
-    )
-    result = dict(nearest)
-    result["distance_m"] = round(
-        haversine_km(
-            latitude,
-            longitude,
-            nearest["latitude"],
-            nearest["longitude"],
-        )
-        * 1000.0,
-        1,
-    )
+    loc_lats = np.array([item["latitude"] for item in localities], dtype=float)
+    loc_lons = np.array([item["longitude"] for item in localities], dtype=float)
+    distances_km = _haversine_km(latitude, longitude, loc_lats, loc_lons)
+    min_idx = int(np.argmin(distances_km))
+    result = dict(localities[min_idx])
+    result["distance_m"] = round(float(distances_km[min_idx]) * 1000.0, 1)
     return result
 
 
@@ -136,38 +137,22 @@ def get_business_or_raise(connection: Any, osm_id: str) -> dict[str, Any]:
     return business
 
 
-def _load_businesses(connection: Any) -> list[dict[str, Any]]:
-    return [
-        _row_to_dict(row)
-        for row in connection.execute(
-            """
-            SELECT osm_id, name, name_status, category_id, category_name, subtype,
-                   latitude, longitude, ward_id, inside_ghmc
-            FROM businesses
-            """
-        ).fetchall()
-    ]
+def _load_businesses(connection: Any) -> pd.DataFrame:
+    df = pd.read_sql_query(
+        """
+        SELECT osm_id, name, name_status, category_id, category_name, subtype,
+               latitude, longitude, ward_id, inside_ghmc
+        FROM businesses
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        """,
+        connection,
+    )
+    df["inside_ghmc"] = df["inside_ghmc"].astype(int)
+    return df
 
 
-def _load_points(connection: Any, table: str) -> list[dict[str, Any]]:
-    return [
-        _row_to_dict(row)
-        for row in connection.execute(
-            f"SELECT latitude, longitude FROM {table}"
-        ).fetchall()
-    ]
-
-
-def _load_analysis_sources(connection: Any) -> dict[str, Any]:
-    return {
-        "businesses": _load_businesses(connection),
-        "localities": list_localities(connection),
-        "city_counts": city_category_counts(connection),
-        "circle_totals": _circle_totals(connection),
-        "bus_stops": _load_points(connection, "bus_stops"),
-        "metro_stations": _load_points(connection, "metro_stations"),
-        "school_counts": _school_counts_by_ward(connection),
-    }
+def _load_points_df(connection: Any, table: str) -> pd.DataFrame:
+    return pd.read_sql_query(f"SELECT latitude, longitude FROM {table}", connection)
 
 
 def city_category_counts(connection: Any) -> dict[str, dict[str, int]]:
@@ -186,9 +171,9 @@ def city_category_counts(connection: Any) -> dict[str, dict[str, int]]:
         """
     ).fetchall()
     for row in rows:
-        category_id = row["category_id"]
-        if category_id in counts:
-            counts[category_id] = {
+        cat_id = row["category_id"]
+        if cat_id in counts:
+            counts[cat_id] = {
                 "mapped_poi_count": int(row["mapped_poi_count"]),
                 "inside_ghmc_count": int(row["inside_ghmc_count"] or 0),
                 "named_count": int(row["named_count"] or 0),
@@ -219,54 +204,17 @@ def _school_counts_by_ward(connection: Any) -> dict[int, int]:
     return {int(row["ward_no"]): int(row["school_count"]) for row in rows}
 
 
-def _count_within_radius(
-    rows: list[dict[str, Any]],
-    latitude: float,
-    longitude: float,
-    radius_km: float,
-) -> int:
-    return sum(
-        1
-        for row in rows
-        if haversine_km(latitude, longitude, row["latitude"], row["longitude"]) <= radius_km
-    )
-
-
-def _locality_counts_by_category(
-    businesses: list[dict[str, Any]],
-    localities: list[dict[str, Any]],
-    category_id: str,
-    radius_m: int,
-) -> dict[str, int]:
-    radius_km = radius_m / 1000.0
-    return {
-        locality["id"]: sum(
-            1
-            for business in businesses
-            if business["category_id"] == category_id
-            and haversine_km(
-                locality["latitude"],
-                locality["longitude"],
-                business["latitude"],
-                business["longitude"],
-            )
-            <= radius_km
-        )
-        for locality in localities
-    }
-
-
 def _selection_context(
     connection: Any,
     locality: dict[str, Any],
     category_id: str,
     radius_m: int,
-    businesses: list[dict[str, Any]],
+    b_df: pd.DataFrame,
     localities: list[dict[str, Any]],
     city_counts: dict[str, dict[str, int]],
     circle_totals: dict[int, int],
-    bus_stops: list[dict[str, Any]],
-    metro_stations: list[dict[str, Any]],
+    bus_df: pd.DataFrame,
+    metro_df: pd.DataFrame,
     school_counts: dict[int, int],
     analysis_center: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -284,58 +232,50 @@ def _selection_context(
     longitude = float(center["longitude"])
     area_km2 = math.pi * radius_km**2
 
-    selected_count = 0
-    selected_named = 0
-    total_mapped = 0
-    total_all = 0
-    total_inside_ghmc = 0
-    category_counts: dict[str, int] = {}
-    for business in businesses:
-        distance = haversine_km(
-            latitude,
-            longitude,
-            business["latitude"],
-            business["longitude"],
-        )
-        if distance > radius_km:
-            continue
-        total_all += 1
-        if business["category_id"] is None:
-            continue
-        total_mapped += 1
-        total_inside_ghmc += int(business["inside_ghmc"] or 0)
-        category_counts[business["category_id"]] = (
-            category_counts.get(business["category_id"], 0) + 1
-        )
-        if business["category_id"] == category_id:
-            selected_count += 1
-            selected_named += 1 if business["name_status"] == "named" else 0
+    # Vectorized distances to all businesses
+    b_lats = b_df["latitude"].to_numpy(dtype=float)
+    b_lons = b_df["longitude"].to_numpy(dtype=float)
+    dists = _haversine_km(latitude, longitude, b_lats, b_lons)
+    within_mask = dists <= radius_km
+    within_b = b_df.iloc[within_mask]
+
+    total_all = len(within_b)
+    mapped_b = within_b[within_b["category_id"].notna()]
+    total_mapped = len(mapped_b)
+    total_inside_ghmc = int(mapped_b["inside_ghmc"].sum()) if total_mapped else 0
+
+    cat_counts_series = mapped_b["category_id"].value_counts()
+    category_counts = cat_counts_series.to_dict()
+
+    selected_b = mapped_b[mapped_b["category_id"] == category_id]
+    selected_count = len(selected_b)
+    selected_named = int((selected_b["name_status"] == "named").sum())
 
     category_mix = [
         {
-            "category_id": mix_category_id,
-            "category_name": CATEGORY_NAMES.get(mix_category_id, mix_category_id),
-            "mapped_poi_count": count,
-            "share_pct": percentage(count, total_mapped),
+            "category_id": mix_cat,
+            "category_name": CATEGORY_NAMES.get(mix_cat, mix_cat),
+            "mapped_poi_count": int(cnt),
+            "share_pct": percentage(int(cnt), total_mapped),
         }
-        for mix_category_id, count in sorted(
-            category_counts.items(),
-            key=lambda item: (-item[1], item[0]),
-        )
+        for mix_cat, cnt in category_counts.items()
     ]
     hhi = (
-        round(sum((count / total_mapped) ** 2 for count in category_counts.values()) * 10000, 1)
+        round(float(sum((cnt / total_mapped) ** 2 for cnt in category_counts.values()) * 10000.0), 1)
         if total_mapped
         else None
     )
 
-    locality_category_counts = _locality_counts_by_category(
-        businesses,
-        localities,
-        category_id,
-        radius_m,
-    )
-    selected_counts = list(locality_category_counts.values())
+    # Locality category counts using vectorized distance for each locality
+    cat_mask = b_df["category_id"] == category_id
+    cat_lats = b_lats[cat_mask]
+    cat_lons = b_lons[cat_mask]
+
+    selected_counts = []
+    for loc in localities:
+        d = _haversine_km(loc["latitude"], loc["longitude"], cat_lats, cat_lons)
+        selected_counts.append(int(np.sum(d <= radius_km)))
+
     max_locality_count = max(selected_counts) if selected_counts else 0
     median_locality_count = median(selected_counts) if selected_counts else 0
     city_category_count = city_counts[category_id]["mapped_poi_count"]
@@ -348,31 +288,39 @@ def _selection_context(
     if not insufficient_data and max_locality_count > 0:
         competition_index = round(clamp((selected_count / max_locality_count) * 100), 2)
 
-    bus_count = _count_within_radius(bus_stops, latitude, longitude, radius_km)
-    metro_count = _count_within_radius(metro_stations, latitude, longitude, radius_km)
+    # Vectorized bus & metro distance
+    bus_lats = bus_df["latitude"].to_numpy(dtype=float)
+    bus_lons = bus_df["longitude"].to_numpy(dtype=float)
+    bus_count = int(np.sum(_haversine_km(latitude, longitude, bus_lats, bus_lons) <= radius_km))
+
+    metro_lats = metro_df["latitude"].to_numpy(dtype=float)
+    metro_lons = metro_df["longitude"].to_numpy(dtype=float)
+    metro_count = int(np.sum(_haversine_km(latitude, longitude, metro_lats, metro_lons) <= radius_km))
+
     ward_no = locality.get("ward_no")
     school_count = school_counts.get(ward_no, 0) if ward_no is not None else 0
 
     bus_counts = [
-        _count_within_radius(bus_stops, item["latitude"], item["longitude"], radius_km)
+        int(np.sum(_haversine_km(item["latitude"], item["longitude"], bus_lats, bus_lons) <= radius_km))
         for item in localities
     ]
     metro_counts = [
-        _count_within_radius(metro_stations, item["latitude"], item["longitude"], radius_km)
+        int(np.sum(_haversine_km(item["latitude"], item["longitude"], metro_lats, metro_lons) <= radius_km))
         for item in localities
     ]
     supported_school_counts = [
-        school_counts.get(item.get("ward_no"), 0)
-        if item.get("ward_no") is not None
-        else 0
+        school_counts.get(item.get("ward_no"), 0) if item.get("ward_no") is not None else 0
         for item in localities
     ]
+
     bus_max = max(bus_counts) if bus_counts else 0
     metro_max = max(metro_counts) if metro_counts else 0
     school_max = max(supported_school_counts) if supported_school_counts else 0
+
     bus_component = (bus_count / bus_max) * 100 if bus_max else 0.0
     metro_component = (metro_count / metro_max) * 100 if metro_max else 0.0
     school_component = (school_count / school_max) * 100 if school_max else 0.0
+
     access_index = round(
         clamp(
             bus_component * ACCESS_WEIGHTS["bus_stops"]
@@ -394,11 +342,7 @@ def _selection_context(
     named_share = percentage(selected_named, selected_count)
     ward_assigned_share = percentage(total_inside_ghmc, total_mapped) if total_mapped else 0.0
     category_support = clamp((city_category_count / CATEGORY_SUPPORT_TARGET) * 100)
-    support_layers = sum(
-        1
-        for count in (len(bus_stops), len(metro_stations), len(school_counts))
-        if count > 0
-    )
+    support_layers = sum(1 for cnt in (len(bus_df), len(metro_df), len(school_counts)) if cnt > 0)
     support_availability = (support_layers / 3.0) * 100
     data_completeness = round(
         clamp(
@@ -581,30 +525,6 @@ def _point_analysis_center(
     }
 
 
-def _context_from_sources(
-    connection: Any,
-    locality: dict[str, Any],
-    category_id: str,
-    radius_m: int,
-    sources: dict[str, Any],
-    center: dict[str, Any],
-) -> dict[str, Any]:
-    return _selection_context(
-        connection,
-        locality,
-        category_id,
-        radius_m,
-        sources["businesses"],
-        sources["localities"],
-        sources["city_counts"],
-        sources["circle_totals"],
-        sources["bus_stops"],
-        sources["metro_stations"],
-        sources["school_counts"],
-        analysis_center=center,
-    )
-
-
 def locality_market_metrics(
     connection: Any,
     locality_id: str,
@@ -614,15 +534,66 @@ def locality_market_metrics(
     radius = validate_radius(radius_m)
     category = get_category_or_raise(category_id)
     locality = get_locality_or_raise(connection, locality_id)
-    sources = _load_analysis_sources(connection)
-    return _context_from_sources(
+
+    b_df = _load_businesses(connection)
+    bus_df = _load_points_df(connection, "bus_stops")
+    metro_df = _load_points_df(connection, "metro_stations")
+    localities = list_localities(connection)
+    city_counts = city_category_counts(connection)
+    circle_totals = _circle_totals(connection)
+    school_counts = _school_counts_by_ward(connection)
+
+    snapshot = _selection_context(
         connection,
         locality,
         category["id"],
         radius,
-        sources,
+        b_df,
+        localities,
+        city_counts,
+        circle_totals,
+        bus_df,
+        metro_df,
+        school_counts,
         _locality_analysis_center(locality),
     )
+
+    # Attach Machine Learning similarity cluster info
+    try:
+        from analysis.machine_learning import get_cached_bundle, prescriptive_recommendations
+
+        ml_bundle = get_cached_bundle(connection, category["id"], radius)
+        clusters = ml_bundle["clusters"]
+        if clusters["status"] == "available" and locality_id in clusters["labels"]:
+            c_id = clusters["labels"][locality_id]
+            profile = clusters["profile_map"].get(c_id, {})
+            snapshot["similarity_cluster"] = {
+                "cluster_id": c_id,
+                "label": profile.get("label"),
+                "description": profile.get("description"),
+                "pca_coordinates": clusters["coordinates"].get(locality_id),
+            }
+            snapshot["prescriptive_recommendations"] = prescriptive_recommendations(
+                snapshot,
+                clusters.get("medians", {}),
+                c_id,
+            )
+        else:
+            snapshot["similarity_cluster"] = {
+                "cluster_id": None,
+                "label": "Not clustered (insufficient mapped data)",
+                "description": "Locality has fewer than 3 mapped businesses for statistical clustering.",
+                "pca_coordinates": None,
+            }
+            snapshot["prescriptive_recommendations"] = prescriptive_recommendations(
+                snapshot,
+                clusters.get("medians", {}),
+                0,
+            )
+    except Exception:
+        pass
+
+    return snapshot
 
 
 def all_locality_metrics(
@@ -632,23 +603,61 @@ def all_locality_metrics(
 ) -> dict[str, Any]:
     radius = validate_radius(radius_m)
     category = get_category_or_raise(category_id)
-    sources = _load_analysis_sources(connection)
-    snapshots = [
-        _context_from_sources(
+
+    b_df = _load_businesses(connection)
+    bus_df = _load_points_df(connection, "bus_stops")
+    metro_df = _load_points_df(connection, "metro_stations")
+    localities = list_localities(connection)
+    city_counts = city_category_counts(connection)
+    circle_totals = _circle_totals(connection)
+    school_counts = _school_counts_by_ward(connection)
+
+    # Optional cluster profiles
+    clusters_info = {}
+    try:
+        from analysis.machine_learning import get_cached_bundle
+
+        ml_bundle = get_cached_bundle(connection, category["id"], radius)
+        clusters_info = ml_bundle.get("clusters", {})
+    except Exception:
+        pass
+
+    snapshots = []
+    labels = clusters_info.get("labels", {})
+    profiles = clusters_info.get("profile_map", {})
+    coords = clusters_info.get("coordinates", {})
+
+    for locality in localities:
+        snap = _selection_context(
             connection,
             locality,
             category["id"],
             radius,
-            sources,
+            b_df,
+            localities,
+            city_counts,
+            circle_totals,
+            bus_df,
+            metro_df,
+            school_counts,
             _locality_analysis_center(locality),
         )
-        for locality in sources["localities"]
-    ]
+        loc_id = locality["id"]
+        if loc_id in labels:
+            c_id = labels[loc_id]
+            snap["similarity_cluster"] = {
+                "cluster_id": c_id,
+                "label": profiles.get(c_id, {}).get("label"),
+                "pca_coordinates": coords.get(loc_id),
+            }
+        snapshots.append(snap)
+
     return {
         "category": {"id": category["id"], "name": category["name"]},
         "radius_m": radius,
         "locality_count": len(snapshots),
         "localities": snapshots,
+        "clustering_model": clusters_info.get("model"),
         "data_notes": [
             "Locality centres are approximate and catchments overlap.",
             "Counts are mapped OpenStreetMap POIs, not a verified business register.",
@@ -677,16 +686,28 @@ def business_market_metrics(
     )
     if nearest is None:
         raise RuntimeError("No locality reference points are available.")
-    sources = _load_analysis_sources(connection)
-    sources["businesses"] = [
-        item for item in sources["businesses"] if item["osm_id"] != osm_id
-    ]
-    snapshot = _context_from_sources(
+
+    b_df = _load_businesses(connection)
+    b_df = b_df[b_df["osm_id"] != osm_id].reset_index(drop=True)
+    bus_df = _load_points_df(connection, "bus_stops")
+    metro_df = _load_points_df(connection, "metro_stations")
+    localities = list_localities(connection)
+    city_counts = city_category_counts(connection)
+    circle_totals = _circle_totals(connection)
+    school_counts = _school_counts_by_ward(connection)
+
+    snapshot = _selection_context(
         connection,
         nearest,
         category["id"],
         radius,
-        sources,
+        b_df,
+        localities,
+        city_counts,
+        circle_totals,
+        bus_df,
+        metro_df,
+        school_counts,
         _point_analysis_center(business, nearest),
     )
     snapshot["business"] = {
@@ -721,32 +742,37 @@ def city_overview(
     total_inside = sum(item["inside_ghmc_count"] for item in counts.values())
     total_named = sum(item["named_count"] for item in counts.values())
     category_stats = counts[category["id"]]
+
     localities = list_localities(connection)
-    businesses = _load_businesses(connection)
-    locality_counts = _locality_counts_by_category(
-        businesses,
-        localities,
-        category["id"],
-        radius,
-    )
-    named_by_id = {locality["id"]: locality["name"] for locality in localities}
+    b_df = _load_businesses(connection)
+
+    cat_b = b_df[b_df["category_id"] == category["id"]]
+    cat_lats = cat_b["latitude"].to_numpy(dtype=float)
+    cat_lons = cat_b["longitude"].to_numpy(dtype=float)
+
+    locality_counts = {}
+    radius_km = radius / 1000.0
+    for loc in localities:
+        d = _haversine_km(loc["latitude"], loc["longitude"], cat_lats, cat_lons)
+        locality_counts[loc["id"]] = int(np.sum(d <= radius_km))
+
+    named_by_id = {loc["id"]: loc["name"] for loc in localities}
     top_localities = [
         {
-            "id": locality_id,
-            "name": named_by_id[locality_id],
+            "id": loc_id,
+            "name": named_by_id[loc_id],
             "mapped_poi_count": count,
         }
-        for locality_id, count in sorted(
+        for loc_id, count in sorted(
             locality_counts.items(),
             key=lambda item: (-item[1], named_by_id[item[0]]),
         )[:5]
     ]
-    total_pois = connection.execute("SELECT COUNT(*) AS count FROM businesses").fetchone()[
-        "count"
-    ]
+    total_pois = connection.execute("SELECT COUNT(*) AS count FROM businesses").fetchone()["count"]
     unnamed_total = connection.execute(
         "SELECT COUNT(*) AS count FROM businesses WHERE name_status = 'unnamed'"
     ).fetchone()["count"]
+
     return {
         "category": {"id": category["id"], "name": category["name"]},
         "city": {
